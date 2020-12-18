@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 from cv2 import cv2
 
 # Input images size
-
-IMG_WIDTH = 128
-IMG_HEIGHT = 128
+# original dimensions/16
+IMG_WIDTH = 375
+IMG_HEIGHT = 250
 IMG_CHANNELS = 3
 
 # Input paths
@@ -31,6 +31,13 @@ train_ids = os.listdir(PARENT_DIR + ORIGINAL_PATH)
 X_train = np.zeros((len(train_ids),IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype = np.uint8)
 Y_train = np.zeros((len(train_ids),IMG_HEIGHT, IMG_WIDTH), dtype = np.bool)
 
+def checkVegetation(b, g, r):
+    if ((b == 0 and g == 102 and r == 0) or
+          (b == 35 and g == 142 and r == 107) or
+            (b == 190 and g == 250 and r == 190)):
+        return True
+    else:
+        return False
 
 def resize_original():
     ids = os.listdir(PARENT_DIR + ORIGINAL_PATH)
@@ -59,11 +66,15 @@ def resize_segmented():
             for j in range(0,resized_img.shape[1]):
                 # pick a class "paved area"
                 (b,g,r) = resized_img[i,j];
-                if (b == 128 and g == 64 and r == 128):
+                # if (b == 128 and g == 64 and r == 128):
+                #     gray_img[i, j] = 255
+                #
+                # else:
+                #     gray_img[i,j] = 0
+                if checkVegetation(b,g,r):
                     gray_img[i, j] = 255
-
                 else:
-                    gray_img[i,j] = 0
+                    gray_img[i, j] = 0
 
         # if(n == 10):
         #     exit(0)
@@ -71,15 +82,11 @@ def resize_segmented():
         #path = "%s/%s/%03d.jpg" % (DST_PARENT_DIR, DST_SEGMENTED_PATH, n)
         cv2.imwrite(DST_PARENT_DIR + DST_SEGMENTED_PATH + id_.split('.')[0] + ".png", gray_img)
 
-#resize_segmented()
-#resize_original()
+resize_segmented()
+resize_original()
 
 ##################################################################### pre-processing data set #######################################################################3
 
-
-
-# X_train = np.zeros((len(train_ids),IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype = np.uint8)
-# Y_train = np.zeros((len(train_ids),IMG_HEIGHT, IMG_WIDTH), dtype = np.bool)
 
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     #Actual train image
@@ -99,7 +106,7 @@ imshow(np.squeeze(Y_train[image_we]))
 plt.show()
 
 # Input layer
-inputs = tf.keras.layers.Input((IMG_WIDTH, IMG_HEIGHT, IMG_CHANNELS))
+inputs = tf.keras.layers.Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
 
 # Converts pixel value to float, and normalizes it
 s = tf.keras.layers.Lambda(lambda x: x/255)(inputs)
@@ -129,24 +136,28 @@ c5 = tf.keras.layers.Dropout(0.3)(c5)
 c5 = tf.keras.layers.Conv2D(256, (3,3), activation = 'relu', kernel_initializer='he_normal', padding = 'same')(c5)
 
 u6 = tf.keras.layers.Conv2DTranspose(128, (2,2), strides=(2, 2), padding='same')(c5)
+u6 = tf.keras.layers.ZeroPadding2D(padding=((0,1),(0,0)))(u6)
 u6 = tf.keras.layers.concatenate([u6, c4])
 c6 = tf.keras.layers.Conv2D(128, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(u6)
 c6 = tf.keras.layers.Dropout(0.2)(c6)
 c6 = tf.keras.layers.Conv2D(128, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(c6)
 
 u7 = tf.keras.layers.Conv2DTranspose(64, (2,2), strides=(2, 2), padding='same')(c6)
+u7 = tf.keras.layers.ZeroPadding2D(padding=((0,0),(0,1)))(u7)
 u7 = tf.keras.layers.concatenate([u7, c3])
 c7 = tf.keras.layers.Conv2D(64, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(u7)
 c7 = tf.keras.layers.Dropout(0.2)(c7)
 c7 = tf.keras.layers.Conv2D(64, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(c7)
 
 u8 = tf.keras.layers.Conv2DTranspose(32, (2,2), strides=(2, 2), padding='same')(c7)
+u8 = tf.keras.layers.ZeroPadding2D(padding=((0,1),(0,1)))(u8)
 u8 = tf.keras.layers.concatenate([u8, c2])
 c8 = tf.keras.layers.Conv2D(32, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(u8)
 c8 = tf.keras.layers.Dropout(0.1)(c8)
 c8 = tf.keras.layers.Conv2D(32, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(c8)
 
 u9 = tf.keras.layers.Conv2DTranspose(16, (2,2), strides=(2, 2), padding='same')(c8)
+u9 = tf.keras.layers.ZeroPadding2D(padding=((0,0),(0,1)))(u9)
 u9 = tf.keras.layers.concatenate([u9, c1], axis=3)
 c9 = tf.keras.layers.Conv2D(16, (3,3),activation = 'relu', kernel_initializer='he_normal', padding = 'same')(u9)
 c9 = tf.keras.layers.Dropout(0.1)(c9)
@@ -163,11 +174,11 @@ checkpointer = tf.keras.callbacks.ModelCheckpoint('model_for_nuclei.h5', verbose
 
 #Callbacks
 callbacks =[
-   # tf.keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
+   tf.keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
    tf.keras.callbacks.TensorBoard(log_dir='logs')
 ]
 
-results = model.fit(X_train,Y_train,validation_split=0.5, batch_size = 16, epochs = 25, callbacks=callbacks)
+results = model.fit(X_train,Y_train,validation_split=0.8, shuffle=True, batch_size = 16, epochs = 25, callbacks=callbacks, verbose=1)
 
 idx = random.randint(0, len(X_train))
 
@@ -184,19 +195,26 @@ preds_train_t = (preds_train > 0.5).astype(np.uint8)
 
 #random training sample
 i = random.randint(0, len(preds_train_t))
-imshow(X_train[i])
-plt.show()
-imshow(np.squeeze(Y_train[i]))
-plt.show()
-imshow(np.squeeze(preds_train_t[i]))
-plt.show()
-
 trainPath = "%s%sstrain%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
 controlPath = "%s%scontrolMask%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
 predictionPath = "%s%sprediction%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
-cv2.imwrite(trainPath, X_train[i])
-cv2.imwrite(controlPath, Y_train[i])
-cv2.imwrite(predictionPath, preds_train_t[i])
+
+imshow(X_train[i])
+plt.savefig(trainPath)
+plt.show()
+
+
+imshow(np.squeeze(Y_train[i]))
+plt.savefig(controlPath)
+plt.show()
+
+
+imshow(np.squeeze(preds_train_t[i]))
+plt.savefig(predictionPath)
+plt.show()
+
+
+
 
 
 #random validation sample
