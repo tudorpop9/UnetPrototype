@@ -2,6 +2,7 @@ import tensorflow as tf
 import os
 import numpy as np
 import random
+
 from tqdm import tqdm
 from skimage.io import imread, imshow
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ from time import sleep
 IMG_WIDTH = 64
 IMG_HEIGHT = 64
 IMG_CHANNELS = 3
-SAMPLE_SIZE = 20000
+SAMPLE_SIZE = 200
 N_OF_LABELS = 6
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -36,6 +37,17 @@ SEGMENTED_RESIZED_PATH = "Resized_Segmented_Variation_1/"
 
 RESULTS_PATH = "./Results/"
 LABEL_TYPES_PATH = "OnlyRoad/"
+
+# current labels
+labels = {
+    0: (255, 255, 255), # white, paved area/road
+    1: (0, 255, 255),   # light blue, low vegetation
+    2: (0, 0, 255),     # blue, buildings
+    3: (0, 255, 0),     # green, high vegetation
+    4: (255, 0, 0),     # red, bare earth
+    5: (255, 255, 0)    # yellow, vehicle/car
+}
+
 # consistent randomness and good-luck charm
 seed = 42
 np.random.seed = seed
@@ -600,7 +612,7 @@ def to_one_hot(N_OF_LABELS, label_array):
     return_array = np.zeros((len(label_array), IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
     print('Finding all existing labels')
-    labels = get_unique_values(label_array)
+    # labels = get_unique_values(label_array)
     print('found ' + str(len(labels)) + ' labels')
 
     if (N_OF_LABELS != len(labels)):
@@ -640,7 +652,35 @@ def to_one_hot(N_OF_LABELS, label_array):
                         # if current pixel value has the current label value flag it in result
                         # it uses the fact that all return_array values are initially 0
                         if tuple(image[row_idx, col_idx]) == labels[label_idx]:
-                            return_array[image_idx][row_idx][col_idx][label_idx] = 255  # or 1
+                            return_array[image_idx][row_idx][col_idx][label_idx] = 1  # or 255
+                            # print("For " + str(image[row_idx, col_idx]) + " encoded " + str(return_array[image_idx][row_idx][col_idx]) + "label idx: " + str(label_idx))
+    return labels, return_array
+
+
+def get_max_channel_idx(image_channels):
+    max_idx = 0
+    for channel in image_channels:
+        if image_channels[max_idx] < channel:
+            idxs = np.where(image_channels == channel)
+            max_idx = idxs[0][0]
+
+    return max_idx
+
+def parse_prediction(predicted_image, labels):
+    return_array = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+
+    for row_idx in range(0, predicted_image.shape[0]):
+        for col_idx in range(0, predicted_image.shape[1]):
+            try:
+                max_val_idx = get_max_channel_idx(predicted_image[row_idx][col_idx])
+                label = labels[max_val_idx]
+                return_array[row_idx][col_idx] = label
+                # print("Predicted " + str(predicted_image[row_idx][col_idx]))
+                # print("Label is:" + str(max_val_idx) + str(label))
+                # print()
+            except:
+                print("aici")
+
     return return_array
 
 
@@ -689,12 +729,12 @@ to_train = input()
 
 # applies one hot encoding on label images
 print('One hot encoding labeled images..')
-one_hot_y_train = to_one_hot(N_OF_LABELS, Y_train)
+labels, one_hot_y_train = to_one_hot(N_OF_LABELS, Y_train)
 
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
     callbacks = [
-        # tf.keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
+        tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(log_dir='logs')
     ]
 
@@ -711,21 +751,26 @@ if int(to_train) % 2 == 0:
 else:
     model.load_weights('model_for_nuclei.h5')
 
-idx = random.randint(0, len(X_train))
+# idx = random.randint(0, len(X_train))
 
 preds_train = model.predict(X_train, verbose=1)
 # preds_val = model.predict(X_train[int(X_train.shape[0])], verbose=1)
 # preds_test = model.predict(X_test, verbose = 1)
 
 # Binarizationing the results
-preds_train_t = (preds_train > 0.5).astype(np.uint8)
+# preds_train_t = (preds_train > 0.5).astype(np.uint8)
 
 # random training sample
 
 print("Enter 0 to exit, any other number to predict another image: ")
 continue_flag = input()
+
+
+
+
 while int(continue_flag) > 0:
-    i = random.randint(0, len(preds_train_t))
+    i = random.randint(0, len(preds_train))
+
     trainPath = "%s%sstrain%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
     controlPath = "%s%scontrolMask%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
     predictionPath = "%s%sprediction%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
@@ -738,7 +783,8 @@ while int(continue_flag) > 0:
     plt.savefig(controlPath)
     plt.show()
 
-    imshow(np.squeeze(preds_train_t[i] * 255))
+    interpreted_prediction = parse_prediction(preds_train[i], labels)
+    imshow(np.squeeze(interpreted_prediction))
     plt.savefig(predictionPath)
     plt.show()
 
