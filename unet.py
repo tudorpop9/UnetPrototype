@@ -154,7 +154,7 @@ def create_model():
     outputs = tf.keras.layers.Conv2D(6, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.00001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
@@ -202,13 +202,11 @@ def create_simpler_model():
 # some loss functions form stackoverflow and what not
 smooth = 1
 
-
 def dice_coef(y_true, y_pred):
     y_true_f = tf.keras.backend.flatten(y_true)
     y_pred_f = tf.keras.backend.flatten(y_pred)
     intersection = tf.keras.backend.sum(y_true_f * y_pred_f)
     return (2. * intersection + smooth) / (tf.keras.backend.sum(y_true_f) + tf.keras.backend.sum(y_pred_f) + smooth)
-
 
 def dice_coef_loss(y_true, y_pred):
     return 1 - dice_coef(y_true, y_pred)
@@ -228,46 +226,6 @@ def dice_coef_loss(y_true, y_pred):
 # data_set.to_one_hot_and_save()
 # exit(3)
 
-train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
-
-# train_ids.sort()
-# labeled_ids = os.listdir(PARENT_DIR + SEGMENTED_ONE_HOT_PATH)
-# labeled_ids.sort()
-# train_dataset = tf.data.Dataset.list_files(PARENT_DIR + ORIGINAL_RESIZED_PATH + '*.png')
-# train_dataset = tf.sort(train_dataset)
-# train_dataset = train_dataset.shuffle(len(train_ids), seed=seed)
-
-# labeled_dataset = tf.data.Dataset.list_files(PARENT_DIR + SEGMENTED_ONE_HOT_PATH + '*.tif')
-# labeled_dataset = tf.sort(labeled_dataset)
-# labeled_dataset = labeled_dataset.shuffle(len(train_ids), seed=seed)
-# final_ds = tf.data.Dataset.zip((train_dataset, labeled_dataset))
-# final_ds = final_ds.shuffle(len(train_ids), seed=seed)
-# final_ds = final_ds.batch(2000)
-
-
-random_data = random.sample(range(0, len(train_ids)), SAMPLE_SIZE)
-
-#
-# X_train = np.zeros((SAMPLE_SIZE, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-# Y_train = np.zeros((SAMPLE_SIZE, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-#
-# for n, id_ in tqdm(enumerate(random_data), total=len(random_data)):
-#     img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[id_])[:, :, :IMG_CHANNELS]
-#     X_train[n] = img
-#
-#     mask = imread(DST_PARENT_DIR + SEGMENTED_RESIZED_PATH + train_ids[id_])[:, :, :IMG_CHANNELS]
-#     Y_train[n] = mask
-
-# image_we = random.randint(0, SAMPLE_SIZE)
-# # original
-# imshow(X_train[image_we])
-# plt.show()
-# cv2.imshow('img', X_train[image_we])
-# # control
-# imshow(np.squeeze(Y_train[image_we]))
-# plt.show()
-# cv2.imshow('mask', Y_train[image_we])
-
 # creates the unet
 model = create_model()
 # model = create_simpler_model()
@@ -284,31 +242,23 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
+    metric = 'val_accuracy'
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
-            log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2))
+            log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
+        tf.keras.callbacks.ModelCheckpoint(filepath='./model_for_semantic_segmentation.h5', monitor=metric,
+                        verbose=2, save_best_only=True, mode='max')
     ]
-    random.shuffle(train_ids)
-    dataset_batches = data_set.batch_data(train_ids, BATCH_SIZE)
 
-    for batch in dataset_batches:
-
-        X_train = np.zeros((BATCH_SIZE, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-        Y_train = np.zeros((BATCH_SIZE, IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
-
-        for n, id_ in tqdm(enumerate(batch), total=len(batch)):
-            img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
-            X_train[n] = img
-
-            mask = imread(DST_PARENT_DIR + SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
-                   :N_OF_LABELS]
-            Y_train[n] = mask
-
-        model.fit(X_train, Y_train, validation_split=0.6, shuffle=True, batch_size=8, epochs=60,
-                  callbacks=callbacks,
-                  verbose=1)
-        model.save_weights('model_for_semantic_segmentation.h5')
+    train_generator = data_set.get_generator()
+    model.fit(train_generator,
+              batch_size=18,
+              steps_per_epoch=1941, #(floor(dataset_size / batch_size))
+              callbacks=callbacks,
+              epochs=20,
+              verbose=1)
+    model.save_weights('model_for_semantic_segmentation.h5')
     # print('Training is done, do you want to save (overwrite) weights ?[y/n]')
     # save_w_flag = input()
     # if save_w_flag.lower() == 'y':
@@ -319,7 +269,7 @@ else:
     model.load_weights('model_for_semantic_segmentation.h5')
 
 
-
+train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
 random_images_idx = random.sample(train_ids, 100)
 X_train = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 ground_truth = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)

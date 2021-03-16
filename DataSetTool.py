@@ -39,11 +39,10 @@ one_hot_labels = {
 }
 
 N_OF_LABELS = len(labels)
+seed = np.random.seed(42)
+
 
 class DataSetTool:
-    def __init__(self):
-        pass
-
     def __init__(self, DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SEGMENTED_PATH, DST_SEGMENTED_PATH,
                  DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH,
                  RESULTS_PATH, LABEL_TYPES_PATH):
@@ -178,14 +177,15 @@ class DataSetTool:
         for thIdx in range(0, len(not_encoded_ids), factor):
             if thIdx == no_threads - 1:
                 # give rest of the data to last thread
-                th = Thread(target=self.one_hot_th_function, args=(not_encoded_ids[thIdx:], labeled_images[thIdx:], lock,))
+                th = Thread(target=self.one_hot_th_function,
+                            args=(not_encoded_ids[thIdx:], labeled_images[thIdx:], lock,))
                 aug_threads.append(th)
                 th.start()
             else:
                 # give thread a chunk of data to process
                 limit = thIdx + factor - 1
                 th = Thread(target=self.one_hot_th_function, args=(not_encoded_ids[thIdx: limit],
-                                                              labeled_images[thIdx: limit], lock,))
+                                                                   labeled_images[thIdx: limit], lock,))
                 aug_threads.append(th)
                 th.start()
 
@@ -293,8 +293,9 @@ class DataSetTool:
                         for j in range(0, img_.shape[1] // 6):
                             fragment[i, j] = img_[i + offset_i * 1000, j + offset_j * 1000]
 
-                    cv2.imwrite(self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
-                                fragment)
+                    cv2.imwrite(
+                        self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
+                        fragment)
                     count = count + 1
 
             for offset_i in range(0, img_.shape[0] // 1000 - 1):
@@ -305,8 +306,9 @@ class DataSetTool:
                             fragment[i, j] = img_[
                                 500 + i + offset_i * 1000, 500 + j + offset_j * 1000]  # 500 pt a porni de la 500, nu 0 si a termina la 5500
 
-                    cv2.imwrite(self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
-                                fragment)
+                    cv2.imwrite(
+                        self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
+                        fragment)
                     count = count + 1
 
     # segmented image data extractions
@@ -327,8 +329,9 @@ class DataSetTool:
                         for j in range(0, img_.shape[1] // 6):
                             fragment[i, j] = img_[i + offset_i * 1000, j + offset_j * 1000]
 
-                    cv2.imwrite(self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
-                                fragment)
+                    cv2.imwrite(
+                        self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
+                        fragment)
                     count = count + 1
 
             for offset_i in range(0, img_.shape[0] // 1000 - 1):
@@ -339,8 +342,9 @@ class DataSetTool:
                             fragment[i, j] = img_[
                                 500 + i + offset_i * 1000, 500 + j + offset_j * 1000]  # 500 pt a porni de la 500, nu 0 si a termina la 5500
 
-                    cv2.imwrite(self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
-                                fragment)
+                    cv2.imwrite(
+                        self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH + id_.split('.')[0] + "_" + str(count) + ".png",
+                        fragment)
                     count = count + 1
 
     def thread_aug_data_function(self, data_fragment, root_orig_path, root_segm_path):
@@ -452,3 +456,43 @@ class DataSetTool:
 
         pass
 
+    def get_generator(self):
+
+        originals_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
+        labels_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
+
+        originals_generator = originals_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
+                                                                    class_mode=None,
+                                                                    seed=seed,
+                                                                    target_size=(250, 250),
+                                                                    shuffle=True)
+
+        labels_generator = labels_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
+                                                              class_mode=None,
+                                                              seed=seed,
+                                                              target_size=(250, 250),
+                                                              shuffle=True)
+        print(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1])
+        train_generator = zip(originals_generator, labels_generator)
+
+        return train_generator
+
+    # don't uses this, it is just a code backup
+    def old_dataset_batching_backup(self):
+
+        train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        random.shuffle(train_ids)
+        dataset_batches = self.batch_data(train_ids, BATCH_SIZE)
+        for batch in dataset_batches:
+
+            X_train = np.zeros((BATCH_SIZE, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+            Y_train = np.zeros((BATCH_SIZE, IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+
+            for n, id_ in tqdm(enumerate(batch), total=len(batch)):
+                img = imread(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+                X_train[n] = img
+
+                mask = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[
+                       :, :,
+                       :N_OF_LABELS]
+                Y_train[n] = mask
