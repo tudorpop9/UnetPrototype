@@ -267,16 +267,16 @@ if int(to_train) % 2 == 0:
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('model_for_semantic_segmentation.h5')
+    model.load_weights('model_for_semantic_segmentation_backup.h5')
 
 
-train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
+train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH + ORIGINAL_RESIZED_PATH)
 random_images_idx = random.sample(train_ids, 100)
 X_train = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 ground_truth = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 
 for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
-    img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+    img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
     X_train[n] = img
 
     mask = imread(DST_PARENT_DIR + SEGMENTED_RESIZED_PATH + train_ids[n].split('.')[0] + '.png')[:, :,
