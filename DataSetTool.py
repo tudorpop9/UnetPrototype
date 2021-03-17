@@ -42,6 +42,46 @@ N_OF_LABELS = len(labels)
 seed = np.random.seed(42)
 
 
+def decode_png_img(img):
+    img = tf.image.decode_png(img, channels=IMG_CHANNELS)
+    img = tf.image.convert_image_dtype(img, tf.uint8)
+
+    return img
+
+
+def decode_tif_img(img):
+    # img = tf.image.decode_image(img, channels=N_OF_LABELS, dtype=tf.dtypes.uint8)
+    img = one_hot_enc(img.numpy())
+    img = tf.convert_to_tensor(img, tf.uint8)
+    img = tf.image.convert_image_dtype(img, tf.uint8)
+
+    return img
+
+
+def one_hot_enc(input_img):
+    encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+
+    for label_idx in range(0, N_OF_LABELS):
+        for row_idx in range(0, input_img.shape[0]):
+            for col_idx in range(0, input_img.shape[1]):
+                # if current pixel value has the current label value flag it in result
+                # it uses the fact that all return_array values are initially 0
+                if tuple(input_img[row_idx, col_idx]) == labels[label_idx]:
+                    encoded_img[row_idx][col_idx][label_idx] = 1  # or 255
+    return encoded_img
+
+
+# actually loads an image, its maks and returns the pair
+def combine_img_masks(original_path: tf.Tensor, segmented_path: tf.Tensor):
+    original_image = tf.io.read_file(original_path)
+    original_image = decode_png_img(original_image)
+
+    mask_image = tf.io.read_file(segmented_path)
+    mask_image = decode_tif_img(mask_image)
+
+    return original_image, mask_image
+
+
 class DataSetTool:
     def __init__(self, DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SEGMENTED_PATH, DST_SEGMENTED_PATH,
                  DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH,
@@ -103,6 +143,7 @@ class DataSetTool:
                                 return_array[image_idx][row_idx][col_idx][label_idx] = 1  # or 255
                                 # print("For " + str(image[row_idx, col_idx]) + " encoded " + str(return_array[image_idx][row_idx][col_idx]) + "label idx: " + str(label_idx))
         return labels, return_array
+
 
     def get_max_channel_idx(self, image_channels):
         max_idx = 0
@@ -456,21 +497,25 @@ class DataSetTool:
 
         pass
 
+    # not good, ImageDataGenerator will convert the one-hot-encoded labels to a 1,3, or 4 channel image
+    # but it should work fine for a 1-3-4 classes segmentation
+    # images should be in at least one subfolder inside the given path
     def get_generator(self):
 
         originals_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
         labels_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
 
-        originals_generator = originals_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
-                                                                    class_mode=None,
-                                                                    seed=seed,
-                                                                    target_size=(250, 250),
-                                                                    shuffle=True)
+        originals_generator = originals_datagen.flow_from_directory(
+            self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
+            class_mode=None,
+            seed=seed,
+            target_size=(250, 250),
+            shuffle=True)
 
         labels_generator = labels_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
                                                               class_mode=None,
                                                               seed=seed,
-                                                              target_size=(250, 250),
+                                                              target_size=(250, 250, 6),
                                                               shuffle=True)
         print(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1])
         train_generator = zip(originals_generator, labels_generator)
@@ -496,3 +541,37 @@ class DataSetTool:
                        :, :,
                        :N_OF_LABELS]
                 Y_train[n] = mask
+
+    # creates an input pipeline
+    def get_input_pipeline(self):
+        # read ids of the input images
+        # the images are inside a subfolder with the same name because of the 'get_generator' function
+        originals_root_dir = self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH + self.ORIGINAL_RESIZED_PATH
+        masks_root_dir = self.PARENT_DIR + self.SEGMENTED_RESIZED_PATH
+        # get an array with relative path for each image
+        originals_ids = os.listdir(originals_root_dir)
+        originals_ids.sort(reverse=False)
+        originals_full_paths = [originals_root_dir + id_ for id_ in originals_ids]
+
+        mask_ids = os.listdir(masks_root_dir)
+        mask_ids.sort(reverse=False)
+        masks_full_paths = [masks_root_dir + id_ for id_ in mask_ids]
+
+        # create dataset using relative path names
+        originals_ds = tf.data.Dataset.from_tensor_slices(originals_full_paths)
+        masks_ds = tf.data.Dataset.from_tensor_slices(masks_full_paths)
+
+        train_ds = tf.data.Dataset.zip((originals_ds, masks_ds))
+        train_ds = train_ds.map(lambda x, y: tf.py_function(func=combine_img_masks,
+                                                            inp=[x, y], Tout=(tf.uint8, tf.uint8)),
+                                num_parallel_calls=4,
+                                deterministic=False)
+
+        # print(train_ds.element_spec)
+        train_ds.prefetch(10)
+        for image, label in train_ds.take(1):
+            print(image.shape)
+            print(label.shape)
+
+        exit(1)
+        pass

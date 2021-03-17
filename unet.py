@@ -69,6 +69,8 @@ data_set = DataSetTool.DataSetTool(DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SE
                  DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH,
                  RESULTS_PATH, LABEL_TYPES_PATH)
 
+##################################################################### testing functionality area ############################################################################
+data_set.get_input_pipeline()
 
 ##################################################################### pre-processing data set #######################################################################3
 
