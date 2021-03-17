@@ -70,7 +70,7 @@ data_set = DataSetTool.DataSetTool(DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SE
                  RESULTS_PATH, LABEL_TYPES_PATH)
 
 ##################################################################### testing functionality area ############################################################################
-data_set.get_input_pipeline()
+# data_set.get_input_pipeline()
 
 ##################################################################### pre-processing data set #######################################################################3
 
@@ -253,14 +253,13 @@ if int(to_train) % 2 == 0:
                         verbose=2, save_best_only=True, mode='max')
     ]
 
-    train_generator = data_set.get_generator()
+    train_generator = data_set.get_input_pipeline()
     model.fit(train_generator,
               batch_size=18,
-              steps_per_epoch=1941, #(floor(dataset_size / batch_size))
               callbacks=callbacks,
-              epochs=20,
+              epochs=2,
               verbose=1)
-    model.save_weights('model_for_semantic_segmentation.h5')
+    # model.save_weights('model_for_semantic_segmentation.h5')
     # print('Training is done, do you want to save (overwrite) weights ?[y/n]')
     # save_w_flag = input()
     # if save_w_flag.lower() == 'y':

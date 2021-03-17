@@ -11,6 +11,8 @@ import tensorflow as tf
 from cv2 import cv2
 from skimage.io import imread, imshow
 from tqdm import tqdm
+import io
+from PIL import Image
 
 # Input images size
 # original dimensions/16
@@ -60,13 +62,15 @@ def decode_tif_img(img):
 
 def one_hot_enc(input_img):
     encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
-
+    # print(input_img)
+    image = np.array(Image.open(io.BytesIO(input_img)))
+    # print(image)
     for label_idx in range(0, N_OF_LABELS):
-        for row_idx in range(0, input_img.shape[0]):
-            for col_idx in range(0, input_img.shape[1]):
+        for row_idx in range(0, image.shape[0]):
+            for col_idx in range(0, image.shape[1]):
                 # if current pixel value has the current label value flag it in result
                 # it uses the fact that all return_array values are initially 0
-                if tuple(input_img[row_idx, col_idx]) == labels[label_idx]:
+                if tuple(image[row_idx, col_idx]) == labels[label_idx]:
                     encoded_img[row_idx][col_idx][label_idx] = 1  # or 255
     return encoded_img
 
@@ -567,11 +571,13 @@ class DataSetTool:
                                 num_parallel_calls=4,
                                 deterministic=False)
 
+        train_ds_batched = train_ds.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE).cache()
         # print(train_ds.element_spec)
-        train_ds.prefetch(10)
-        for image, label in train_ds.take(1):
-            print(image.shape)
-            print(label.shape)
+        # train_ds.prefetch(10)
+        # for image, label in train_ds.take(1):
+        #     print(image.shape)
+        #     print(label.shape)
+        #     print()
 
-        exit(1)
-        pass
+        # exit(1)
+        return train_ds_batched
