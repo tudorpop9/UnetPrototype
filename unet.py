@@ -153,7 +153,7 @@ def create_model():
 
     # c9 = tf.keras.layers.Conv2D(6, (1, 1), activation='softmax')(c9)
 
-    outputs = tf.keras.layers.Conv2D(6, (1, 1), activation='softmax')(c9)
+    outputs = tf.keras.layers.Conv2D(3, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)

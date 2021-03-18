@@ -24,20 +24,21 @@ BATCH_SIZE = 2000
 # current labels
 labels = {
     0: (255, 255, 255),  # white, paved area/road
-    1: (0, 255, 255),  # light blue, low vegetation
-    2: (0, 0, 255),  # blue, buildings
+    1: (0, 0, 255),  # blue, buildings
+    2: (0, 255, 255),  # light blue, low vegetation
     3: (0, 255, 0),  # green, high vegetation
     4: (255, 0, 0),  # red, bare earth
     5: (255, 255, 0)  # yellow, vehicle/car
 }
 
+BUILDING_LABEL_IDX = 1
+ROAD_LABEL_IDX = 0
+OTHER_LABEL_IDX = 2
+
 one_hot_labels = {
-    0: [1, 0, 0, 0, 0, 0],  # white, paved area/road
-    1: [0, 1, 0, 0, 0, 0],  # light blue, low vegetation
-    2: [0, 0, 1, 0, 0, 0],  # blue, buildings
-    3: [0, 0, 0, 1, 0, 0],  # green, high vegetation
-    4: [0, 0, 0, 0, 1, 0],  # red, bare earth
-    5: [0, 0, 0, 0, 0, 1]  # yellow, vehicle/car
+    0: [1, 0, 0],  # white, paved area/road
+    1: [0, 1, 0],  # blue, buildings
+    2: [0, 0, 1],  # background
 }
 
 N_OF_LABELS = len(labels)
@@ -61,17 +62,21 @@ def decode_tif_img(img):
 
 
 def one_hot_enc(input_img):
-    encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+    encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
     # print(input_img)
     image = np.array(Image.open(io.BytesIO(input_img)))
     # print(image)
-    for label_idx in range(0, N_OF_LABELS):
-        for row_idx in range(0, image.shape[0]):
-            for col_idx in range(0, image.shape[1]):
-                # if current pixel value has the current label value flag it in result
-                # it uses the fact that all return_array values are initially 0
-                if tuple(image[row_idx, col_idx]) == labels[label_idx]:
-                    encoded_img[row_idx][col_idx][label_idx] = 1  # or 255
+    for row_idx in range(0, image.shape[0]):
+        for col_idx in range(0, image.shape[1]):
+            # if current pixel value has the current label value flag it in result
+            # it uses the fact that all return_array values are initially 0
+            if tuple(image[row_idx, col_idx]) == labels[BUILDING_LABEL_IDX]:
+                encoded_img[row_idx][col_idx] = one_hot_labels[BUILDING_LABEL_IDX]
+            elif tuple(image[row_idx, col_idx]) == labels[ROAD_LABEL_IDX]:
+                encoded_img[row_idx][col_idx] = one_hot_labels[BUILDING_LABEL_IDX]
+            else:
+                encoded_img[row_idx][col_idx] = one_hot_labels[OTHER_LABEL_IDX]
+
     return encoded_img
 
 
