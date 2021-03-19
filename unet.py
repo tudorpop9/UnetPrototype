@@ -30,15 +30,24 @@ labels = {
     5: (255, 255, 0)  # yellow, vehicle/car
 }
 
-one_hot_labels = {
-    0: [1, 0, 0, 0, 0, 0],  # white, paved area/road
-    1: [0, 1, 0, 0, 0, 0],  # light blue, low vegetation
-    2: [0, 0, 1, 0, 0, 0],  # blue, buildings
-    3: [0, 0, 0, 1, 0, 0],  # green, high vegetation
-    4: [0, 0, 0, 0, 1, 0],  # red, bare earth
-    5: [0, 0, 0, 0, 0, 1]  # yellow, vehicle/car
+
+
+labels_limited = {
+    0: (255, 255, 255),  # white, paved area/road
+    1: (0, 0, 255),  # blue, buildings
+    2: (0, 0, 0),  # others
 }
 
+BUILDING_LABEL_IDX = 1
+ROAD_LABEL_IDX = 0
+OTHER_LABEL_IDX = 2
+
+one_hot_labels = {
+    0: [1, 0, 0],  # white, paved area/road
+    1: [0, 1, 0],  # blue, buildings
+    2: [0, 0, 1],  # background
+}
+# tf.executing_eagerly()
 N_OF_LABELS = len(labels)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -159,7 +168,7 @@ def create_model():
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
+    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
     return model
@@ -192,7 +201,7 @@ def create_simpler_model():
     outputs = tf.keras.layers.Conv2D(N_OF_LABELS, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.000001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
 
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
@@ -244,6 +253,7 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
+    model.load_weights('model_for_semantic_segmentation_backup_anw.h5')
     metric = 'val_accuracy'
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
@@ -253,13 +263,14 @@ if int(to_train) % 2 == 0:
                         verbose=2, save_best_only=True, mode='max')
     ]
 
+    # train_generator = data_set.get_generator()
     train_generator = data_set.get_input_pipeline()
     model.fit(train_generator,
-              batch_size=18,
+              batch_size=8,
               callbacks=callbacks,
               epochs=2,
               verbose=1)
-    # model.save_weights('model_for_semantic_segmentation.h5')
+    model.save_weights('model_for_semantic_segmentation_backup_anw.h5')
     # print('Training is done, do you want to save (overwrite) weights ?[y/n]')
     # save_w_flag = input()
     # if save_w_flag.lower() == 'y':
@@ -267,7 +278,7 @@ if int(to_train) % 2 == 0:
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('model_for_semantic_segmentation_backup.h5')
+    model.load_weights('model_for_semantic_segmentation_backup_anw.h5')
 
 
 train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH + ORIGINAL_RESIZED_PATH)
@@ -281,7 +292,7 @@ for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
 
     mask = imread(DST_PARENT_DIR + SEGMENTED_RESIZED_PATH + train_ids[n].split('.')[0] + '.png')[:, :,
            :N_OF_LABELS]
-    ground_truth[n] = mask
+    ground_truth[n] = data_set.to_limited_label_mask(mask)
 
 
 preds_train = model.predict(X_train, verbose=1)
@@ -310,7 +321,7 @@ while int(continue_flag) > 0:
     plt.savefig(controlPath)
     plt.show()
 
-    interpreted_prediction = data_set.parse_prediction(preds_train[i], labels)
+    interpreted_prediction = data_set.parse_prediction(preds_train[i], labels_limited)
     imshow(np.squeeze(interpreted_prediction))
     plt.savefig(predictionPath)
     plt.show()

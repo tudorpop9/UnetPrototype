@@ -20,7 +20,7 @@ IMG_WIDTH = 250
 IMG_HEIGHT = 250
 IMG_CHANNELS = 3
 SAMPLE_SIZE = 20000
-BATCH_SIZE = 2000
+BATCH_SIZE = 16
 # current labels
 labels = {
     0: (255, 255, 255),  # white, paved area/road
@@ -29,6 +29,13 @@ labels = {
     3: (0, 255, 0),  # green, high vegetation
     4: (255, 0, 0),  # red, bare earth
     5: (255, 255, 0)  # yellow, vehicle/car
+}
+
+
+labels_limited = {
+    0: (255, 255, 255),  # white, paved area/road
+    1: (0, 0, 255),  # blue, buildings
+    2: (0, 0, 0),  # others
 }
 
 BUILDING_LABEL_IDX = 1
@@ -43,7 +50,8 @@ one_hot_labels = {
 
 N_OF_LABELS = len(labels)
 seed = np.random.seed(42)
-
+SEED_42 = 42
+global_random = random.Random(SEED_42)
 
 def decode_png_img(img):
     img = tf.image.decode_png(img, channels=IMG_CHANNELS)
@@ -128,6 +136,24 @@ class DataSetTool:
                     if (b, g, r) not in return_array:
                         return_array.append((b, g, r))
         return return_array
+
+    def to_limited_label_mask(self, mask):
+        encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        # print(input_img)
+        # print(image)
+        for row_idx in range(0, mask.shape[0]):
+            for col_idx in range(0, mask.shape[1]):
+                # if current pixel value has the current label value flag it in result
+                # it uses the fact that all return_array values are initially 0
+                if tuple(mask[row_idx, col_idx]) == labels_limited[BUILDING_LABEL_IDX]:
+                    encoded_img[row_idx][col_idx] = labels_limited[BUILDING_LABEL_IDX]
+                elif tuple(mask[row_idx, col_idx]) == labels_limited[ROAD_LABEL_IDX]:
+                    encoded_img[row_idx][col_idx] = labels_limited[ROAD_LABEL_IDX]
+                else:
+                    encoded_img[row_idx][col_idx] = labels_limited[OTHER_LABEL_IDX]
+
+        return encoded_img
+
 
     def to_one_hot(self, N_OF_LABELS, label_array):
         return_array = np.zeros((len(label_array), IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
@@ -524,7 +550,7 @@ class DataSetTool:
         labels_generator = labels_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
                                                               class_mode=None,
                                                               seed=seed,
-                                                              target_size=(250, 250, 6),
+                                                              target_size=(250, 250),
                                                               shuffle=True)
         print(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1])
         train_generator = zip(originals_generator, labels_generator)
@@ -560,10 +586,12 @@ class DataSetTool:
         # get an array with relative path for each image
         originals_ids = os.listdir(originals_root_dir)
         originals_ids.sort(reverse=False)
+        global_random.shuffle(originals_ids)
         originals_full_paths = [originals_root_dir + id_ for id_ in originals_ids]
 
         mask_ids = os.listdir(masks_root_dir)
         mask_ids.sort(reverse=False)
+        global_random.shuffle(mask_ids)
         masks_full_paths = [masks_root_dir + id_ for id_ in mask_ids]
 
         # create dataset using relative path names
@@ -576,7 +604,8 @@ class DataSetTool:
                                 num_parallel_calls=4,
                                 deterministic=False)
 
-        train_ds_batched = train_ds.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE).cache()
+        # train_ds_batched = train_ds.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE).cache()
+        train_ds_batched = train_ds.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
         # print(train_ds.element_spec)
         # train_ds.prefetch(10)
         # for image, label in train_ds.take(1):
@@ -586,3 +615,4 @@ class DataSetTool:
 
         # exit(1)
         return train_ds_batched
+
