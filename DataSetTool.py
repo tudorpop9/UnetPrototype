@@ -31,7 +31,6 @@ labels = {
     5: (255, 255, 0)  # yellow, vehicle/car
 }
 
-
 labels_limited = {
     0: (255, 255, 255),  # white, paved area/road
     1: (0, 0, 255),  # blue, buildings
@@ -53,6 +52,7 @@ seed = np.random.seed(42)
 SEED_42 = 42
 global_random = random.Random(SEED_42)
 
+
 def decode_png_img(img):
     img = tf.image.decode_png(img, channels=IMG_CHANNELS)
     img = tf.image.convert_image_dtype(img, tf.uint8)
@@ -62,8 +62,9 @@ def decode_png_img(img):
 
 def decode_tif_img(img):
     # img = tf.image.decode_image(img, channels=N_OF_LABELS, dtype=tf.dtypes.uint8)
-    img = one_hot_enc(img.numpy())
-    img = tf.convert_to_tensor(img, tf.uint8)
+    img = tf.image.decode_png(img, channels=IMG_CHANNELS)
+    # img = one_hot_enc(img.numpy())
+    # img = tf.convert_to_tensor(img, tf.uint8)
     img = tf.image.convert_image_dtype(img, tf.uint8)
 
     return img
@@ -81,7 +82,7 @@ def one_hot_enc(input_img):
             if tuple(image[row_idx, col_idx]) == labels[BUILDING_LABEL_IDX]:
                 encoded_img[row_idx][col_idx] = one_hot_labels[BUILDING_LABEL_IDX]
             elif tuple(image[row_idx, col_idx]) == labels[ROAD_LABEL_IDX]:
-                encoded_img[row_idx][col_idx] = one_hot_labels[BUILDING_LABEL_IDX]
+                encoded_img[row_idx][col_idx] = one_hot_labels[ROAD_LABEL_IDX]
             else:
                 encoded_img[row_idx][col_idx] = one_hot_labels[OTHER_LABEL_IDX]
 
@@ -120,9 +121,6 @@ class DataSetTool:
         return b == 255 and g == 0 and r == 0
 
     def check_road_vaihingen(self, b, g, r):
-        pass
-
-    def check_road_vaihingen(self, b, g, r):
         return b == 255 and g == 255 and r == 255
 
     def get_unique_values(self, images):
@@ -154,7 +152,6 @@ class DataSetTool:
 
         return encoded_img
 
-
     def to_one_hot(self, N_OF_LABELS, label_array):
         return_array = np.zeros((len(label_array), IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
@@ -179,7 +176,6 @@ class DataSetTool:
                                 # print("For " + str(image[row_idx, col_idx]) + " encoded " + str(return_array[image_idx][row_idx][col_idx]) + "label idx: " + str(label_idx))
         return labels, return_array
 
-
     def get_max_channel_idx(self, image_channels):
         max_idx = 0
         for channel in image_channels:
@@ -200,6 +196,23 @@ class DataSetTool:
                     return_array[row_idx][col_idx] = label
                 except:
                     print("aici")
+
+        return return_array
+
+    def decode_one_hot_limited_labels(self, mask, one_hot_labels):
+        return_array = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+
+        for row_idx in range(0, mask.shape[0]):
+            for col_idx in range(0, mask.shape[1]):
+                # try:
+                if list(mask[row_idx][col_idx]) == one_hot_labels[BUILDING_LABEL_IDX]:
+                    return_array[row_idx][col_idx] = labels_limited[BUILDING_LABEL_IDX]
+                elif list(mask[row_idx][col_idx]) == one_hot_labels[ROAD_LABEL_IDX]:
+                    return_array[row_idx][col_idx] = labels_limited[ROAD_LABEL_IDX]
+                else:
+                    return_array[row_idx][col_idx] = labels_limited[OTHER_LABEL_IDX]
+            # except:
+            #     print("aici")
 
         return return_array
 
@@ -289,7 +302,7 @@ class DataSetTool:
         return batch_array
 
     def augment_data_set(self):
-        data_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        data_ids = os.listdir(self.PARENT_DIR + self.SEGMENTED_RESIZED_PATH)
         no_threads = 8
         aug_threads = []
         root_orig_path = self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH
@@ -328,16 +341,23 @@ class DataSetTool:
         ids = os.listdir(self.PARENT_DIR + self.DST_SEGMENTED_PATH)
         for n, id_ in tqdm(enumerate(ids), total=len(ids)):
             path = self.PARENT_DIR + self.DST_SEGMENTED_PATH + id_.split('.')[0] + '.png'
-            img = cv2.imread(path, cv2.IMREAD_COLOR)
+            img_bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+            img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             resized_img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT), interpolation=cv2.INTER_NEAREST)
 
             for i in range(0, resized_img.shape[0]):
                 for j in range(0, resized_img.shape[1]):
                     # pick a class "paved area"
-                    (b, g, r) = resized_img[i, j]
+                    (r, g, b) = resized_img[i, j]
                     # if it is not a building label or road label, make it 0 (black)
-                    if not self.check_road_vaihingen(b, g, r) and not self.check_building_vaihingen(b, g, r):
-                        resized_img[i, j] = (0, 0, 0)
+                    if self.check_road_vaihingen(b, g, r):
+                        # not ok, but its the fastest way to fix the bug
+                        resized_img[i, j] = one_hot_labels[OTHER_LABEL_IDX]
+                    elif self.check_building_vaihingen(b, g, r):
+                        resized_img[i, j] = one_hot_labels[BUILDING_LABEL_IDX]
+                    else:
+                        # not ok, but its the fastest way to fix the bug
+                        resized_img[i, j] = one_hot_labels[ROAD_LABEL_IDX]
 
             cv2.imwrite(self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH + id_, resized_img)
 
@@ -426,64 +446,64 @@ class DataSetTool:
     def thread_aug_data_function(self, data_fragment, root_orig_path, root_segm_path):
         for n, id_ in tqdm(enumerate(data_fragment), total=len(data_fragment)):
             # print(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + id_)
-            original_img = imread(root_orig_path + id_)[:, :, :IMG_CHANNELS]
+            # original_img = imread(root_orig_path + id_)[:, :, :IMG_CHANNELS]
             segmented_img = imread(root_segm_path + id_)[:, :, :IMG_CHANNELS]
             aug_originals = []
             aug_segmented = []
 
             # roatated images
-            rot_o_90 = cv2.rotate(original_img, cv2.ROTATE_90_CLOCKWISE)
-            aug_originals.append(rot_o_90)
-            rot_o_180 = cv2.rotate(original_img, cv2.ROTATE_180)
-            aug_originals.append(rot_o_180)
-            rot_o_270 = cv2.rotate(original_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            aug_originals.append(rot_o_270)
-
-            # horizontally flipped images
-            flip_o_h_org = cv2.flip(original_img, 1)
-            aug_originals.append(flip_o_h_org)
-            flip_o_h_90 = cv2.flip(rot_o_90, 1)
-            aug_originals.append(flip_o_h_90)
-            flip_o_h_180 = cv2.flip(rot_o_180, 1)
-            aug_originals.append(flip_o_h_180)
-            flip_o_h_270 = cv2.flip(rot_o_270, 1)
-            aug_originals.append(flip_o_h_270)
-
-            # brighter images
-            brighter_o_ = cv2.add(original_img, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_)
-            brighter_o_rot_o_90 = cv2.add(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_90)
-            brighter_o_rot_o_180 = cv2.add(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_180)
-            brighter_o_rot_o_270 = cv2.add(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_270)
-            brighter_o_flip_o_h_org = cv2.add(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_org)
-            brighter_o_flip_o_h_90 = cv2.add(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_90)
-            brighter_o_flip_o_h_180 = cv2.add(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_180)
-            brighter_o_flip_o_h_270 = cv2.add(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_270)
-
-            # dimmer images
-            dimmer_o_ = cv2.subtract(original_img, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_)
-            dimmer_o_rot_o_90 = cv2.subtract(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_90)
-            dimmer_o_rot_o_180 = cv2.subtract(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_180)
-            dimmer_o_rot_o_270 = cv2.subtract(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_270)
-            dimmer_o_flip_o_h_org = cv2.subtract(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_org)
-            dimmer_o_flip_o_h_90 = cv2.subtract(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_90)
-            dimmer_o_flip_o_h_180 = cv2.subtract(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_180)
-            dimmer_o_flip_o_h_270 = cv2.subtract(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_270)
+            # rot_o_90 = cv2.rotate(original_img, cv2.ROTATE_90_CLOCKWISE)
+            # aug_originals.append(rot_o_90)
+            # rot_o_180 = cv2.rotate(original_img, cv2.ROTATE_180)
+            # aug_originals.append(rot_o_180)
+            # rot_o_270 = cv2.rotate(original_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            # aug_originals.append(rot_o_270)
+            #
+            # # horizontally flipped images
+            # flip_o_h_org = cv2.flip(original_img, 1)
+            # aug_originals.append(flip_o_h_org)
+            # flip_o_h_90 = cv2.flip(rot_o_90, 1)
+            # aug_originals.append(flip_o_h_90)
+            # flip_o_h_180 = cv2.flip(rot_o_180, 1)
+            # aug_originals.append(flip_o_h_180)
+            # flip_o_h_270 = cv2.flip(rot_o_270, 1)
+            # aug_originals.append(flip_o_h_270)
+            #
+            # # brighter images
+            # brighter_o_ = cv2.add(original_img, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_)
+            # brighter_o_rot_o_90 = cv2.add(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_rot_o_90)
+            # brighter_o_rot_o_180 = cv2.add(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_rot_o_180)
+            # brighter_o_rot_o_270 = cv2.add(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_rot_o_270)
+            # brighter_o_flip_o_h_org = cv2.add(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_flip_o_h_org)
+            # brighter_o_flip_o_h_90 = cv2.add(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_flip_o_h_90)
+            # brighter_o_flip_o_h_180 = cv2.add(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_flip_o_h_180)
+            # brighter_o_flip_o_h_270 = cv2.add(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(brighter_o_flip_o_h_270)
+            #
+            # # dimmer images
+            # dimmer_o_ = cv2.subtract(original_img, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_)
+            # dimmer_o_rot_o_90 = cv2.subtract(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_rot_o_90)
+            # dimmer_o_rot_o_180 = cv2.subtract(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_rot_o_180)
+            # dimmer_o_rot_o_270 = cv2.subtract(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_rot_o_270)
+            # dimmer_o_flip_o_h_org = cv2.subtract(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_flip_o_h_org)
+            # dimmer_o_flip_o_h_90 = cv2.subtract(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_flip_o_h_90)
+            # dimmer_o_flip_o_h_180 = cv2.subtract(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_flip_o_h_180)
+            # dimmer_o_flip_o_h_270 = cv2.subtract(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
+            # aug_originals.append(dimmer_o_flip_o_h_270)
 
             # same operations for segmented data
             rot_s_90 = cv2.rotate(segmented_img, cv2.ROTATE_90_CLOCKWISE)
@@ -524,8 +544,8 @@ class DataSetTool:
 
             for i in range(0, len(aug_segmented)):
                 # saves all the augmented originals
-                rgb_orig = cv2.cvtColor(aug_originals[i], cv2.COLOR_BGR2RGB)
-                cv2.imwrite(root_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
+                # rgb_orig = cv2.cvtColor(aug_originals[i], cv2.COLOR_BGR2RGB)
+                # cv2.imwrite(root_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
                 # saves all the augmented segmented
                 rgb_segm = cv2.cvtColor(aug_segmented[i], cv2.COLOR_BGR2RGB)
                 cv2.imwrite(root_segm_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_segm)
@@ -615,4 +635,3 @@ class DataSetTool:
 
         # exit(1)
         return train_ds_batched
-

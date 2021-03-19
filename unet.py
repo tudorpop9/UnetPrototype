@@ -165,7 +165,7 @@ def create_model():
     outputs = tf.keras.layers.Conv2D(3, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.00001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
@@ -230,14 +230,15 @@ def dice_coef_loss(y_true, y_pred):
 # data_set.split_segmented()
 #
 # data_set.resize_original()
-# # data_set.resize_segmented_building_road()
+# data_set.resize_segmented_building_road()
 # data_set.resize_segmented()
 #
 # data_set.augment_data_set()
 # data_set.to_one_hot_and_save()
 # exit(3)
 
-# creates the unet
+# creates the unet3
+
 model = create_model()
 # model = create_simpler_model()
 
@@ -253,7 +254,7 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    model.load_weights('model_for_semantic_segmentation_backup_anw.h5')
+    # model.load_weights('model_for_semantic_segmentation_backup_anw.h5')
     metric = 'val_accuracy'
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
@@ -268,7 +269,7 @@ if int(to_train) % 2 == 0:
     model.fit(train_generator,
               batch_size=8,
               callbacks=callbacks,
-              epochs=2,
+              epochs=3,
               verbose=1)
     model.save_weights('model_for_semantic_segmentation_backup_anw.h5')
     # print('Training is done, do you want to save (overwrite) weights ?[y/n]')
@@ -292,7 +293,7 @@ for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
 
     mask = imread(DST_PARENT_DIR + SEGMENTED_RESIZED_PATH + train_ids[n].split('.')[0] + '.png')[:, :,
            :N_OF_LABELS]
-    ground_truth[n] = data_set.to_limited_label_mask(mask)
+    ground_truth[n] = data_set.decode_one_hot_limited_labels(mask, one_hot_labels)
 
 
 preds_train = model.predict(X_train, verbose=1)
