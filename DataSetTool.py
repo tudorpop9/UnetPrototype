@@ -20,7 +20,7 @@ IMG_WIDTH = 250
 IMG_HEIGHT = 250
 IMG_CHANNELS = 3
 SAMPLE_SIZE = 20000
-BATCH_SIZE = 2000
+BATCH_SIZE = 16
 # current labels
 labels = {
     0: (255, 255, 255),  # white, paved area/road

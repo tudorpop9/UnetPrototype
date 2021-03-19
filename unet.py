@@ -159,7 +159,7 @@ def create_model():
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
+    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
     return model
@@ -255,7 +255,7 @@ if int(to_train) % 2 == 0:
 
     train_generator = data_set.get_input_pipeline()
     model.fit(train_generator,
-              batch_size=18,
+              batch_size=8,
               callbacks=callbacks,
               epochs=2,
               verbose=1)
