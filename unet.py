@@ -165,9 +165,10 @@ def create_model():
     outputs = tf.keras.layers.Conv2D(3, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.00001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
+    # model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
@@ -254,22 +255,22 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    # model.load_weights('model_for_semantic_segmentation_backup_anw.h5')
-    metric = 'val_accuracy'
+    # model.load_weights('model_for_semantic_segmentation_3_labels.h5')
+    metric = 'accuracy'
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
-        tf.keras.callbacks.ModelCheckpoint(filepath='./model_for_semantic_segmentation.h5', monitor=metric,
+        tf.keras.callbacks.ModelCheckpoint(filepath='./model_for_semantic_segmentation_3_labels.h5', monitor=metric,
                         verbose=2, save_best_only=True, mode='max')
     ]
 
     # train_generator = data_set.get_generator()
     train_generator = data_set.get_input_pipeline()
     model.fit(train_generator,
-              batch_size=8,
+              batch_size=16,
               callbacks=callbacks,
-              epochs=3,
+              epochs=30,
               verbose=1)
     model.save_weights('model_for_semantic_segmentation_backup_anw.h5')
     # print('Training is done, do you want to save (overwrite) weights ?[y/n]')

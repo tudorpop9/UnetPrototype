@@ -2,6 +2,7 @@ import datetime
 import os
 import random
 import threading
+import time
 from threading import Thread
 import tifffile
 
@@ -55,7 +56,11 @@ global_random = random.Random(SEED_42)
 
 def decode_png_img(img):
     img = tf.image.decode_png(img, channels=IMG_CHANNELS)
-    img = tf.image.convert_image_dtype(img, tf.uint8)
+    # img = tf.image.convert_image_dtype(img, tf.uint8)
+    # print(img)
+    # img = imread(img)[:, :, :IMG_CHANNELS]
+    # img = one_hot_enc(img.numpy())
+    img = tf.convert_to_tensor(img, tf.uint8)
 
     return img
 
@@ -63,9 +68,10 @@ def decode_png_img(img):
 def decode_tif_img(img):
     # img = tf.image.decode_image(img, channels=N_OF_LABELS, dtype=tf.dtypes.uint8)
     img = tf.image.decode_png(img, channels=IMG_CHANNELS)
+    # img = imread(img)[:, :, :IMG_CHANNELS]
     # img = one_hot_enc(img.numpy())
-    # img = tf.convert_to_tensor(img, tf.uint8)
-    img = tf.image.convert_image_dtype(img, tf.uint8)
+    img = tf.convert_to_tensor(img, tf.uint8)
+    # img = tf.image.convert_image_dtype(img, tf.uint8)
 
     return img
 
@@ -91,12 +97,14 @@ def one_hot_enc(input_img):
 
 # actually loads an image, its maks and returns the pair
 def combine_img_masks(original_path: tf.Tensor, segmented_path: tf.Tensor):
+    # start_time = time.time()
     original_image = tf.io.read_file(original_path)
     original_image = decode_png_img(original_image)
 
     mask_image = tf.io.read_file(segmented_path)
     mask_image = decode_tif_img(mask_image)
-
+    # finish_time = time.time()
+    # print("--- %s seconds --- for one image" % (time.time() - start_time))
     return original_image, mask_image
 
 
