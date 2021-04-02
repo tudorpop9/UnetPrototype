@@ -192,7 +192,7 @@ def create_simpler_model():
     outputs = tf.keras.layers.Conv2D(N_OF_LABELS, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.000001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
 
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
@@ -244,7 +244,11 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    metric = 'val_accuracy'
+    model.load_weights('model_for_semantic_segmentation.h5')
+    metric = 'accuracy'
+    # metric = 'val_accuracy'
+    batch_size = 20
+
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
@@ -253,35 +257,34 @@ if int(to_train) % 2 == 0:
                         verbose=2, save_best_only=True, mode='max')
     ]
 
-    train_generator = data_set.get_input_pipeline()
+    # train_generator = data_set.get_input_pipeline()
+    train_generator, validation_generator = data_set.get_generator(validation_split=0.2, batch_size=batch_size)
     model.fit(train_generator,
-              batch_size=8,
+              validation_data=validation_generator,
+              batch_size=batch_size,
               callbacks=callbacks,
-              epochs=2,
+              # use_multiprocessing=True,
+              # workers=4,
+              epochs=25,
               verbose=1)
-    # model.save_weights('model_for_semantic_segmentation.h5')
-    # print('Training is done, do you want to save (overwrite) weights ?[y/n]')
-    # save_w_flag = input()
-    # if save_w_flag.lower() == 'y':
-    #     model.save_weights('model_for_semantic_segmentation.h5')
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('model_for_semantic_segmentation_backup.h5')
+    model.load_weights('model_for_semantic_segmentation.h5')
 
 
-train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH + ORIGINAL_RESIZED_PATH)
+train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
 random_images_idx = random.sample(train_ids, 100)
 X_train = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 ground_truth = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 
 for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
-    img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+    img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
     X_train[n] = img
 
-    mask = imread(DST_PARENT_DIR + SEGMENTED_RESIZED_PATH + train_ids[n].split('.')[0] + '.png')[:, :,
+    mask = imread(DST_PARENT_DIR + SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
            :N_OF_LABELS]
-    ground_truth[n] = mask
+    ground_truth[n] = data_set.parse_prediction(mask, labels)
 
 
 preds_train = model.predict(X_train, verbose=1)

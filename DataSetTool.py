@@ -1,18 +1,17 @@
-import datetime
 import os
 import random
 import threading
-from threading import Thread
 import tifffile
-
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from cv2 import cv2
-from skimage.io import imread, imshow
-from tqdm import tqdm
 import io
+import AerialDataGenerator as adGenerator
+
+from threading import Thread
+from cv2 import cv2
 from PIL import Image
+from skimage.io import imread
+from tqdm import tqdm
 
 # Input images size
 # original dimensions/16
@@ -147,7 +146,6 @@ class DataSetTool:
                                 return_array[image_idx][row_idx][col_idx][label_idx] = 1  # or 255
                                 # print("For " + str(image[row_idx, col_idx]) + " encoded " + str(return_array[image_idx][row_idx][col_idx]) + "label idx: " + str(label_idx))
         return labels, return_array
-
 
     def get_max_channel_idx(self, image_channels):
         max_idx = 0
@@ -501,30 +499,35 @@ class DataSetTool:
 
         pass
 
-    # not good, ImageDataGenerator will convert the one-hot-encoded labels to a 1,3, or 4 channel image
-    # but it should work fine for a 1-3-4 classes segmentation
-    # images should be in at least one subfolder inside the given path
-    def get_generator(self):
+    # returns two custom AerialDataGenerator, one for training and another for validation
+    # by default validation split is 0.2 but if another value is required the parameter must be specified
+    # if validation split is less than 0.0 or greater than 1.0 the validation generator shall be None
+    def get_generator(self, validation_split=0.2, batch_size=20):
 
-        originals_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
-        labels_datagen = tf.keras.preprocessing.image.ImageDataGenerator(validation_split=0.2)
+        train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        random.shuffle(train_ids)
+        train_fragment = []
+        validation_fragment = []
+        train_generator = None
+        validation_generator = None
 
-        originals_generator = originals_datagen.flow_from_directory(
-            self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
-            class_mode=None,
-            seed=seed,
-            target_size=(250, 250),
-            shuffle=True)
+        if 1.0 > validation_split > 0.0:
+            # splits train set from validation set
+            split_idx = int(len(train_ids) * validation_split)
+            train_fragment = train_ids[:split_idx]
+            validation_fragment = train_ids[split_idx:]
 
-        labels_generator = labels_datagen.flow_from_directory(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1],
-                                                              class_mode=None,
-                                                              seed=seed,
-                                                              target_size=(250, 250, 6),
-                                                              shuffle=True)
-        print(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH[:-1])
-        train_generator = zip(originals_generator, labels_generator)
+            validation_generator = adGenerator.AerialDataGenerator(validation_fragment, self.DST_PARENT_DIR,
+                                                                   self.ORIGINAL_RESIZED_PATH,
+                                                                   self.SEGMENTED_ONE_HOT_PATH, batch_size=batch_size)
+        else:
+            train_fragment = train_ids
 
-        return train_generator
+        train_generator = adGenerator.AerialDataGenerator(train_fragment, self.DST_PARENT_DIR,
+                                                          self.ORIGINAL_RESIZED_PATH,
+                                                          self.SEGMENTED_ONE_HOT_PATH, batch_size=batch_size)
+
+        return train_generator, validation_generator
 
     # don't uses this, it is just a code backup
     def old_dataset_batching_backup(self):
