@@ -30,6 +30,15 @@ labels = {
     5: (255, 255, 0)  # yellow, vehicle/car
 }
 
+labels_name = {
+    0: 'road',  # white, paved area/road
+    1: 'grass',  # light blue, low vegetation
+    2: 'buildings',  # blue, buildings
+    3: 'trees',  # green, high vegetation
+    4: 'dirt_water',  # red, bare earth
+    5: 'vehicle'  # yellow, vehicle/car
+}
+
 one_hot_labels = {
     0: [1, 0, 0, 0, 0, 0],  # white, paved area/road
     1: [0, 1, 0, 0, 0, 0],  # light blue, low vegetation
@@ -158,6 +167,7 @@ class DataSetTool:
 
     def parse_prediction(self, predicted_image, labels):
         return_array = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        # return_array = np.zeros((1000, 1000, IMG_CHANNELS), dtype=np.uint8)
 
         for row_idx in range(0, predicted_image.shape[0]):
             for col_idx in range(0, predicted_image.shape[1]):
@@ -166,7 +176,7 @@ class DataSetTool:
                     label = labels[max_val_idx]
                     return_array[row_idx][col_idx] = label
                 except:
-                    print("aici")
+                    print("Exceptie la parsare onehot --> observable image")
 
         return return_array
 
@@ -514,8 +524,8 @@ class DataSetTool:
         if 1.0 > validation_split > 0.0:
             # splits train set from validation set
             split_idx = int(len(train_ids) * validation_split)
-            train_fragment = train_ids[:split_idx]
-            validation_fragment = train_ids[split_idx:]
+            train_fragment = train_ids[split_idx:]
+            validation_fragment = train_ids[:split_idx]
 
             validation_generator = adGenerator.AerialDataGenerator(validation_fragment, self.DST_PARENT_DIR,
                                                                    self.ORIGINAL_RESIZED_PATH,
@@ -584,3 +594,28 @@ class DataSetTool:
 
         # exit(1)
         return train_ds_batched
+
+    def print_per_class_statistics(self, ground_truth_set, predicition_set):
+        class_statistics = {
+            (255, 255, 255): (0, 0),  # white, paved area/road
+            (0, 255, 255): (0, 0),  # light blue, low vegetation
+            (0, 0, 255): (0, 0),  # blue, buildings
+            (0, 255, 0): (0, 0),  # green, high vegetation
+            (255, 0, 0): (0, 0),  # red, bare earth
+            (255, 255, 0): (0, 0)  # yellow, vehicle/car
+        }
+
+        for idx in range(0, len(predicition_set)):
+            pred = self.parse_prediction(predicition_set[idx], labels)
+            for i in range(0, pred.shape[0]):
+                for j in range(0, pred.shape[1]):
+                    hit, miss = class_statistics[tuple(ground_truth_set[idx][i][j])]
+                    if pred[i][j] == ground_truth_set[idx][i][j]:
+                        hit += 1
+                    else:
+                        miss += 1
+                    class_statistics[tuple(ground_truth_set[idx][i][j])] = (hit, miss)
+
+        for i in range(0, len(labels)):
+            hit, miss = class_statistics[labels[i]]
+            print(labels_name[i] + ' accuracy: ' + str(hit / (hit + miss)) + '\n')

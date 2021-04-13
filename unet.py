@@ -42,7 +42,7 @@ one_hot_labels = {
 N_OF_LABELS = len(labels)
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(gpus[0], True)
+# tf.config.experimental.set_memory_growth(gpus[0], True)
 
 # flag to train the model or load pre-trained weights
 to_train = 0
@@ -192,7 +192,7 @@ def create_simpler_model():
     outputs = tf.keras.layers.Conv2D(N_OF_LABELS, (1, 1), activation='softmax')(c9)
     # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
 
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.00001)
 
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
@@ -244,8 +244,8 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    model.load_weights('model_for_semantic_segmentation.h5')
-    metric = 'accuracy'
+    model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
+    metric = 'val_accuracy'
     # metric = 'val_accuracy'
     batch_size = 20
 
@@ -265,12 +265,12 @@ if int(to_train) % 2 == 0:
               callbacks=callbacks,
               # use_multiprocessing=True,
               # workers=4,
-              epochs=25,
+              epochs=50,
               verbose=1)
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('model_for_semantic_segmentation.h5')
+    model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
 
 
 train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
@@ -288,6 +288,8 @@ for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
 
 
 preds_train = model.predict(X_train, verbose=1)
+
+# data_set.print_per_class_statistics(ground_truth, preds_train)
 
 print("Enter 0 to exit, any other number to predict another image: ")
 continue_flag = input()

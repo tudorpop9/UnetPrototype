@@ -1,12 +1,31 @@
 import tensorflow.keras as keras
 import numpy as np
-from skimage.io import imread
+from skimage.io import imread, imshow
+# import DataSetTool
+# import matplotlib.pyplot as plt
+
+# DST_PARENT_DIR = './Vaihingen/'
+# PARENT_DIR = './Vaihingen/'
+# ORIGINAL_PATH = 'Originals/'
+# SEGMENTED_PATH = 'SegmentedOriginals/'
+#
+# DST_SEGMENTED_PATH = "Variation_1_Segmented/"
+# DST_ORIGINAL_PATH = "Variation_1_Originals/"
+#
+# ORIGINAL_RESIZED_PATH = "Resized_Originals_Variation_1/"
+# SEGMENTED_RESIZED_PATH = "Resized_Segmented_Variation_1/"
+# SEGMENTED_ONE_HOT_PATH = "Resized_Segmented_One_Hot/"
+#
+# RESULTS_PATH = "./Results/"
+# LABEL_TYPES_PATH = "results_on_"
+
 
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 # class used to load and dynamically feed data to the model
 class AerialDataGenerator(keras.utils.Sequence):
 
-    def __init__(self, list_IDs, DST_PARENT_DIR, ORIGINAL_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH, batch_size=32, dim=(250, 250), n_channels=3,
+    def __init__(self, list_IDs, DST_PARENT_DIR, ORIGINAL_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH, batch_size=32,
+                 dim=(250, 250), n_channels=3,
                  n_classes=6, shuffle=True):
         'Initialization'
         self.dim = dim
@@ -18,6 +37,20 @@ class AerialDataGenerator(keras.utils.Sequence):
         self.DST_PARENT_DIR = DST_PARENT_DIR
         self.ORIGINAL_RESIZED_PATH = ORIGINAL_RESIZED_PATH
         self.SEGMENTED_ONE_HOT_PATH = SEGMENTED_ONE_HOT_PATH
+
+        # self.ds_tool = DataSetTool.DataSetTool(DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SEGMENTED_PATH,
+        #                                        DST_SEGMENTED_PATH,
+        #                                        DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH,
+        #                                        SEGMENTED_ONE_HOT_PATH,
+        #                                        RESULTS_PATH, LABEL_TYPES_PATH)
+        # self.labels = {
+        #     0: (255, 255, 255),  # white, paved area/road
+        #     1: (0, 255, 255),  # light blue, low vegetation
+        #     2: (0, 0, 255),  # blue, buildings
+        #     3: (0, 255, 0),  # green, high vegetation
+        #     4: (255, 0, 0),  # red, bare earth
+        #     5: (255, 255, 0)  # yellow, vehicle/car
+        # }
 
         self.on_epoch_end()
 
@@ -58,6 +91,10 @@ class AerialDataGenerator(keras.utils.Sequence):
             X_train[i] = imread(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH + ID)[:, :, :self.n_channels]
 
             # Store class
-            Y_train[i] = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + ID.split('.')[0] + '.tif')[:, :, :self.n_classes]
+            Y_train[i] = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + ID.split('.')[0] + '.tif')[:, :,
+                         :self.n_classes]
 
+            # interpreted_prediction = self.ds_tool.parse_prediction(Y_train[i], self.labels)
+            # imshow(np.squeeze(interpreted_prediction))
+            # plt.show()
         return X_train, Y_train
