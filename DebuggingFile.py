@@ -129,7 +129,11 @@ def test_existing_one_hot_imgs():
 
     test_imgs = []
 
-    for id in ids[1500:1510]:
+    for id in ids[1000:1010]:
+        orig = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + id.split('.')[0] + '.png')[:, :, :IMG_CHANNELS]
+        imshow(orig)
+        plt.show()
+
         img = imread(DST_PARENT_DIR + SEGMENTED_ONE_HOT_PATH + id)[:, :, :N_OF_LABELS]
         imshow(ds_tool.parse_prediction(img, labels_unormalized))
         plt.show()

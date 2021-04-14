@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 # Input images size
 # original dimensions/16
-IMG_WIDTH = 250
-IMG_HEIGHT = 250
+IMG_WIDTH = 1000
+IMG_HEIGHT = 1000
 IMG_CHANNELS = 3
 SAMPLE_SIZE = 20000
 BATCH_SIZE = 16
@@ -132,29 +132,20 @@ class DataSetTool:
                         return_array.append((b, g, r))
         return return_array
 
-    def to_one_hot(self, N_OF_LABELS, label_array):
-        return_array = np.zeros((len(label_array), IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+    def to_one_hot(self, input_img):
+        encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
-        print('Finding all existing labels')
-        # labels = get_unique_values(label_array)
-        print('found ' + str(len(labels)) + ' labels')
+        # check each pixel of current mask
+        for row_idx in range(0, input_img.shape[0]):
+            for col_idx in range(0, input_img.shape[1]):
+                for label_idx in range(0, N_OF_LABELS):
+                    # if current pixel value has the current label value flag it in result
+                    # it uses the fact that all return_array values are initially 0
+                    if tuple(input_img[row_idx, col_idx]) == labels[label_idx]:
+                        encoded_img[row_idx][col_idx] = one_hot_labels[label_idx]
+        # save the encoded image as tiff ?
 
-        if (N_OF_LABELS != len(labels)):
-            print('Error, N_OF_LABELS must be equal to the number of unique values in dataset labes')
-        else:
-            # for each label index
-            for label_idx in range(0, N_OF_LABELS):
-                # check each pixel of all images in Y_train
-                for image_idx in range(0, len(label_array)):
-                    image = label_array[image_idx]
-                    for row_idx in range(0, image.shape[0]):
-                        for col_idx in range(0, image.shape[1]):
-                            # if current pixel value has the current label value flag it in result
-                            # it uses the fact that all return_array values are initially 0
-                            if tuple(image[row_idx, col_idx]) == labels[label_idx]:
-                                return_array[image_idx][row_idx][col_idx][label_idx] = 1  # or 255
-                                # print("For " + str(image[row_idx, col_idx]) + " encoded " + str(return_array[image_idx][row_idx][col_idx]) + "label idx: " + str(label_idx))
-        return labels, return_array
+        return encoded_img
 
     def get_max_channel_idx(self, image_channels):
         max_idx = 0
@@ -195,7 +186,7 @@ class DataSetTool:
     def one_hot_th_function(self, train_ids, labeled_images, lock):
         for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
 
-            mask_ = labeled_images[n]
+            mask_ = imread(self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH + id_)[:, :, :IMG_CHANNELS]
             encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
             # check each pixel of current mask
@@ -218,12 +209,15 @@ class DataSetTool:
         # obtains the images that are not encoded
         not_encoded_ids = self.get_labeled_encoded_difference(segmented_ids, one_hot_ids)
 
-        labeled_images = np.zeros((len(not_encoded_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-
-        for file_index, file_name in tqdm(enumerate(not_encoded_ids), total=len(not_encoded_ids)):
-            mask_ = imread(self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH + file_name)[:, :, :IMG_CHANNELS]
-            labeled_images[file_index] = mask_
-        no_threads = 4
+        # labeled_images = np.zeros((len(not_encoded_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        # labeled_images = np.zeros((20, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        #
+        # for file_index, file_name in tqdm(enumerate(not_encoded_ids), total=len(not_encoded_ids)):
+        #     mask_ = imread(self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH + file_name)[:, :, :IMG_CHANNELS]
+        #     labeled_images[file_index] = mask_
+        #     if file_index == 19:
+        #         break
+        no_threads = 2
         aug_threads = []
         lock = threading.Lock()
         factor = int(len(not_encoded_ids) / no_threads)
@@ -231,14 +225,14 @@ class DataSetTool:
             if thIdx == no_threads - 1:
                 # give rest of the data to last thread
                 th = Thread(target=self.one_hot_th_function,
-                            args=(not_encoded_ids[thIdx:], labeled_images[thIdx:], lock,))
+                            args=(not_encoded_ids[thIdx:], [], lock,))
                 aug_threads.append(th)
                 th.start()
             else:
                 # give thread a chunk of data to process
                 limit = thIdx + factor - 1
                 th = Thread(target=self.one_hot_th_function, args=(not_encoded_ids[thIdx: limit],
-                                                                   labeled_images[thIdx: limit], lock,))
+                                                                   [], lock,))
                 aug_threads.append(th)
                 th.start()
 
@@ -266,24 +260,32 @@ class DataSetTool:
         return batch_array
 
     def augment_data_set(self):
-        data_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
-        no_threads = 8
+        data_ids = os.listdir(self.PARENT_DIR + self.DST_ORIGINAL_PATH)
+        one_hot_ids = os.listdir(self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH)
+        # obtains the images that are not encoded
+        not_encoded_ids = self.get_labeled_encoded_difference(data_ids, one_hot_ids)
+        no_threads = 4
         aug_threads = []
-        root_orig_path = self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH
-        root_segm_path = self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH
+        destination_orig_path = self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH
+        destination_segm_path = self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH
 
-        factor = int(len(data_ids) / no_threads)
-        for thIdx in range(0, len(data_ids), factor):
+        source_orig_path = self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH
+        source_segm_path = self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH
+
+        factor = int(len(not_encoded_ids) / no_threads)
+        for thIdx in range(0, len(not_encoded_ids), factor):
             if thIdx == no_threads - 1:
                 # give rest of the data to last thread
-                th = Thread(target=self.thread_aug_data_function, args=(data_ids[thIdx:],
-                                                                        root_orig_path, root_segm_path,))
+                th = Thread(target=self.thread_aug_data_function, args=(not_encoded_ids[thIdx:],
+                                                                        source_orig_path, source_segm_path,
+                                                                        destination_orig_path, destination_segm_path,))
                 aug_threads.append(th)
                 th.start()
             else:
                 # give thread a chunk of data to process
-                th = Thread(target=self.thread_aug_data_function, args=(data_ids[thIdx: thIdx + factor - 1],
-                                                                        root_orig_path, root_segm_path,))
+                th = Thread(target=self.thread_aug_data_function, args=(not_encoded_ids[thIdx: thIdx + factor - 1],
+                                                                        source_orig_path, source_segm_path,
+                                                                        destination_orig_path, destination_segm_path,))
                 aug_threads.append(th)
                 th.start()
 
@@ -400,114 +402,58 @@ class DataSetTool:
                         fragment)
                     count = count + 1
 
-    def thread_aug_data_function(self, data_fragment, root_orig_path, root_segm_path):
+    def thread_aug_data_function(self, data_fragment, source_orig_path, source_segm_path, destination_orig_path, destination_segm_path):
         for n, id_ in tqdm(enumerate(data_fragment), total=len(data_fragment)):
             # print(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + id_)
-            original_img = imread(root_orig_path + id_)[:, :, :IMG_CHANNELS]
-            segmented_img = imread(root_segm_path + id_)[:, :, :IMG_CHANNELS]
-            aug_originals = []
-            aug_segmented = []
+            original_img = imread(source_orig_path + id_)[:, :, :IMG_CHANNELS]
+            # reads and encodes the image
+            segmented_img = imread(source_segm_path + id_)[:, :, :IMG_CHANNELS]
+            segmented_img = self.to_one_hot(segmented_img)
+
+            aug_originals = [original_img]
+            aug_segmented = [segmented_img]
 
             # roatated images
-            rot_o_90 = cv2.rotate(original_img, cv2.ROTATE_90_CLOCKWISE)
+            rot_o_90 = np.rot90(original_img, k=1)
             aug_originals.append(rot_o_90)
-            rot_o_180 = cv2.rotate(original_img, cv2.ROTATE_180)
+            rot_o_180 = np.rot90(original_img, k=2)
             aug_originals.append(rot_o_180)
-            rot_o_270 = cv2.rotate(original_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            rot_o_270 = np.rot90(original_img, k=3)
             aug_originals.append(rot_o_270)
 
             # horizontally flipped images
-            flip_o_h_org = cv2.flip(original_img, 1)
+            flip_o_h_org = np.flip(original_img, 1)
             aug_originals.append(flip_o_h_org)
-            flip_o_h_90 = cv2.flip(rot_o_90, 1)
+            flip_o_h_90 = np.flip(rot_o_90, 1)
             aug_originals.append(flip_o_h_90)
-            flip_o_h_180 = cv2.flip(rot_o_180, 1)
-            aug_originals.append(flip_o_h_180)
-            flip_o_h_270 = cv2.flip(rot_o_270, 1)
-            aug_originals.append(flip_o_h_270)
 
-            # brighter images
-            brighter_o_ = cv2.add(original_img, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_)
-            brighter_o_rot_o_90 = cv2.add(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_90)
-            brighter_o_rot_o_180 = cv2.add(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_180)
-            brighter_o_rot_o_270 = cv2.add(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_rot_o_270)
-            brighter_o_flip_o_h_org = cv2.add(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_org)
-            brighter_o_flip_o_h_90 = cv2.add(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_90)
-            brighter_o_flip_o_h_180 = cv2.add(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_180)
-            brighter_o_flip_o_h_270 = cv2.add(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(brighter_o_flip_o_h_270)
-
-            # dimmer images
-            dimmer_o_ = cv2.subtract(original_img, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_)
-            dimmer_o_rot_o_90 = cv2.subtract(rot_o_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_90)
-            dimmer_o_rot_o_180 = cv2.subtract(rot_o_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_180)
-            dimmer_o_rot_o_270 = cv2.subtract(rot_o_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_rot_o_270)
-            dimmer_o_flip_o_h_org = cv2.subtract(flip_o_h_org, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_org)
-            dimmer_o_flip_o_h_90 = cv2.subtract(flip_o_h_90, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_90)
-            dimmer_o_flip_o_h_180 = cv2.subtract(flip_o_h_180, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_180)
-            dimmer_o_flip_o_h_270 = cv2.subtract(flip_o_h_270, np.array([random.randint(50, 80) / 1.0]))
-            aug_originals.append(dimmer_o_flip_o_h_270)
 
             # same operations for segmented data
-            rot_s_90 = cv2.rotate(segmented_img, cv2.ROTATE_90_CLOCKWISE)
+            rot_s_90 = np.rot90(segmented_img, k=1)
             aug_segmented.append(rot_s_90)
-            rot_s_180 = cv2.rotate(segmented_img, cv2.ROTATE_180)
+            rot_s_180 = np.rot90(segmented_img, k=2)
             aug_segmented.append(rot_s_180)
-            rot_s_270 = cv2.rotate(segmented_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            rot_s_270 = np.rot90(segmented_img, k=3)
             aug_segmented.append(rot_s_270)
 
-            flip_s_h_org = cv2.flip(segmented_img, 1)
+            flip_s_h_org = np.flip(segmented_img, 1)
             aug_segmented.append(flip_s_h_org)
-            flip_s_h_90 = cv2.flip(rot_s_90, 1)
+            flip_s_h_90 = np.flip(rot_s_90, 1)
             aug_segmented.append(flip_s_h_90)
-            flip_s_h_180 = cv2.flip(rot_s_180, 1)
-            aug_segmented.append(flip_s_h_180)
-            flip_s_h_270 = cv2.flip(rot_s_270, 1)
-            aug_segmented.append(flip_s_h_270)
 
-            # brighter segmented images
-            aug_segmented.append(segmented_img.copy())
-            aug_segmented.append(rot_s_90.copy())
-            aug_segmented.append(rot_s_180.copy())
-            aug_segmented.append(rot_s_270.copy())
-            aug_segmented.append(flip_s_h_org.copy())
-            aug_segmented.append(flip_s_h_90.copy())
-            aug_segmented.append(flip_s_h_180.copy())
-            aug_segmented.append(flip_s_h_270.copy())
-
-            # dimmer segmented images
-            aug_segmented.append(segmented_img.copy())
-            aug_segmented.append(rot_s_90.copy())
-            aug_segmented.append(rot_s_180.copy())
-            aug_segmented.append(rot_s_270.copy())
-            aug_segmented.append(flip_s_h_org.copy())
-            aug_segmented.append(flip_s_h_90.copy())
-            aug_segmented.append(flip_s_h_180.copy())
-            aug_segmented.append(flip_s_h_270.copy())
 
             for i in range(0, len(aug_segmented)):
                 # saves all the augmented originals
                 rgb_orig = cv2.cvtColor(aug_originals[i], cv2.COLOR_BGR2RGB)
-                cv2.imwrite(root_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
+                cv2.imwrite(destination_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
                 # saves all the augmented segmented
-                rgb_segm = cv2.cvtColor(aug_segmented[i], cv2.COLOR_BGR2RGB)
-                cv2.imwrite(root_segm_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_segm)
+                # rgb_segm = cv2.cvtColor(aug_segmented[i], cv2.COLOR_BGR2RGB)
+                # cv2.imwrite(destination_segm_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', aug_segmented[i])
+                new_file_name = self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + id_.split('.')[0] + '_' + str((i + 1)) + '.tif'
+                tifffile.imwrite(new_file_name, aug_segmented[i])
 
-        pass
+
+        # checking initial results
 
     # returns two custom AerialDataGenerator, one for training and another for validation
     # by default validation split is 0.2 but if another value is required the parameter must be specified

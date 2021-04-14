@@ -15,8 +15,8 @@ import DataSetTool
 
 # Input images size
 # original dimensions/16
-IMG_WIDTH = 250
-IMG_HEIGHT = 250
+IMG_WIDTH = 1000
+IMG_HEIGHT = 1000
 IMG_CHANNELS = 3
 SAMPLE_SIZE = 20000
 BATCH_SIZE = 2000
@@ -66,15 +66,14 @@ LABEL_TYPES_PATH = "results_on_"
 seed = 42
 np.random.seed = seed
 data_set = DataSetTool.DataSetTool(DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SEGMENTED_PATH, DST_SEGMENTED_PATH,
-                 DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH,
-                 RESULTS_PATH, LABEL_TYPES_PATH)
+                                   DST_ORIGINAL_PATH, ORIGINAL_RESIZED_PATH, SEGMENTED_RESIZED_PATH,
+                                   SEGMENTED_ONE_HOT_PATH,
+                                   RESULTS_PATH, LABEL_TYPES_PATH)
+
 
 ##################################################################### testing functionality area ############################################################################
-# data_set.get_input_pipeline()
 
 ##################################################################### pre-processing data set #######################################################################3
-
-
 
 
 # create initial model
@@ -138,7 +137,7 @@ def create_model():
     c7 = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c7)
 
     u8 = tf.keras.layers.Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
-    u8 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u8)
+    # u8 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u8)
     u8 = tf.keras.layers.concatenate([u8, c2])
     c8 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u8)
     c8 = tf.keras.layers.Dropout(0.1)(c8)
@@ -165,44 +164,10 @@ def create_model():
     return model
 
 
-# test purposes
-def create_simpler_model():
-    # Input layer
-    inputs = tf.keras.layers.Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
-
-    # Converts pixel value to float, and normalizes it
-    s = tf.keras.layers.Lambda(lambda x: x / 255)(inputs)
-
-    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(inputs)
-    c1 = tf.keras.layers.Dropout(0.1)(c1)
-    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
-    p1 = tf.keras.layers.MaxPooling2D((2, 2))(c1)
-
-    c2 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
-    c2 = tf.keras.layers.Dropout(0.1)(c2)
-    c2 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c2)
-
-    u9 = tf.keras.layers.Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same')(c2)
-    u9 = tf.keras.layers.ZeroPadding2D(padding=((0, 0), (0, 0)))(u9)
-    u9 = tf.keras.layers.concatenate([u9, c1], axis=3)
-    c9 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u9)
-    c9 = tf.keras.layers.Dropout(0.1)(c9)
-    c9 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
-
-    outputs = tf.keras.layers.Conv2D(N_OF_LABELS, (1, 1), activation='softmax')(c9)
-    # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
-
-    adamOptimizer = tf.keras.optimizers.Adam(lr=0.00001)
-
-    model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'])
-    model.summary()
-
-    return model
-
 
 # some loss functions form stackoverflow and what not
 smooth = 1
+
 
 def dice_coef(y_true, y_pred):
     y_true_f = tf.keras.backend.flatten(y_true)
@@ -210,9 +175,9 @@ def dice_coef(y_true, y_pred):
     intersection = tf.keras.backend.sum(y_true_f * y_pred_f)
     return (2. * intersection + smooth) / (tf.keras.backend.sum(y_true_f) + tf.keras.backend.sum(y_pred_f) + smooth)
 
+
 def dice_coef_loss(y_true, y_pred):
     return 1 - dice_coef(y_true, y_pred)
-
 
 
 ##################################################################### pre-processing data set #######################################################################
@@ -221,10 +186,10 @@ def dice_coef_loss(y_true, y_pred):
 # data_set.split_segmented()
 #
 # data_set.resize_original()
-# # data_set.resize_segmented_building_road()
 # data_set.resize_segmented()
 #
 # data_set.augment_data_set()
+# print('Done augmenting dataset')
 # data_set.to_one_hot_and_save()
 # exit(3)
 
@@ -247,14 +212,14 @@ if int(to_train) % 2 == 0:
     model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
     metric = 'val_accuracy'
     # metric = 'val_accuracy'
-    batch_size = 20
+    batch_size = 1
 
     callbacks = [
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
         tf.keras.callbacks.ModelCheckpoint(filepath='./model_for_semantic_segmentation.h5', monitor=metric,
-                        verbose=2, save_best_only=True, mode='max')
+                                           verbose=2, save_best_only=True, mode='max')
     ]
 
     # train_generator = data_set.get_input_pipeline()
@@ -272,7 +237,6 @@ if int(to_train) % 2 == 0:
 else:
     model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
 
-
 train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
 random_images_idx = random.sample(train_ids, 100)
 X_train = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
@@ -285,7 +249,6 @@ for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
     mask = imread(DST_PARENT_DIR + SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
            :N_OF_LABELS]
     ground_truth[n] = data_set.parse_prediction(mask, labels)
-
 
 preds_train = model.predict(X_train, verbose=1)
 

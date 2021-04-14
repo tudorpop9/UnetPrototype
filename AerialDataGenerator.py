@@ -25,7 +25,7 @@ from skimage.io import imread, imshow
 class AerialDataGenerator(keras.utils.Sequence):
 
     def __init__(self, list_IDs, DST_PARENT_DIR, ORIGINAL_RESIZED_PATH, SEGMENTED_ONE_HOT_PATH, batch_size=32,
-                 dim=(250, 250), n_channels=3,
+                 dim=(1000, 1000), n_channels=3,
                  n_classes=6, shuffle=True):
         'Initialization'
         self.dim = dim
