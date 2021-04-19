@@ -55,9 +55,9 @@ SEGMENTED_PATH = 'SegmentedOriginals/'
 DST_SEGMENTED_PATH = "Variation_1_Segmented/"
 DST_ORIGINAL_PATH = "Variation_1_Originals/"
 
-ORIGINAL_RESIZED_PATH = "Resized_Originals_Variation_1/"
-SEGMENTED_RESIZED_PATH = "Resized_Segmented_Variation_1/"
-SEGMENTED_ONE_HOT_PATH = "Resized_Segmented_One_Hot/"
+ORIGINAL_RESIZED_PATH = "Resized_Originals_Variation_10_img_sample/"
+SEGMENTED_RESIZED_PATH = "Resized_Segmented_Variation_10_img_sample/"
+SEGMENTED_ONE_HOT_PATH = "Resized_Segmented_One_Hot_10_img_sample/"
 
 RESULTS_PATH = "./Results/"
 LABEL_TYPES_PATH = "results_on_"
@@ -158,7 +158,7 @@ def create_model():
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
+    model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
     return model
@@ -230,8 +230,10 @@ if int(to_train) % 2 == 0:
               callbacks=callbacks,
               # use_multiprocessing=True,
               # workers=4,
-              epochs=50,
+              epochs=500,
               verbose=1)
+
+    model.save_weights('./saved_last_epoch_anyways.h5')
 
 # otherwise we load the weights from another run
 else:
