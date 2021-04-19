@@ -84,7 +84,7 @@ def create_model():
     # Converts pixel value to float, and normalizes it
     s = tf.keras.layers.Lambda(lambda x: x / 255)(inputs)
 
-    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
+    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(inputs)
     c1 = tf.keras.layers.Dropout(0.1)(c1)
     c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
     p1 = tf.keras.layers.MaxPooling2D((2, 2))(c1)
@@ -158,7 +158,8 @@ def create_model():
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
+    # model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
+    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
     return model
@@ -230,7 +231,7 @@ if int(to_train) % 2 == 0:
               callbacks=callbacks,
               # use_multiprocessing=True,
               # workers=4,
-              epochs=500,
+              epochs=300,
               verbose=1)
 
     model.save_weights('./saved_last_epoch_anyways.h5')
