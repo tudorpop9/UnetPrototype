@@ -84,7 +84,7 @@ def create_model():
     # Converts pixel value to float, and normalizes it
     s = tf.keras.layers.Lambda(lambda x: x / 255)(inputs)
 
-    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(inputs)
+    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
     c1 = tf.keras.layers.Dropout(0.1)(c1)
     c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
     p1 = tf.keras.layers.MaxPooling2D((2, 2))(c1)
@@ -107,7 +107,7 @@ def create_model():
     c5 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p4)
     c5 = tf.keras.layers.Dropout(0.3)(c5)
     c5 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c5)
-    p5 = tf.keras.layers.MaxPooling2D((2, 2))(c5)
+    # p5 = tf.keras.layers.MaxPooling2D((2, 2))(c5)
 
     # c61 = tf.keras.layers.Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p5)
     # c61 = tf.keras.layers.Dropout(0.3)(c61)
@@ -209,7 +209,7 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
+    model.load_weights('semantic_segmentation_all_labels.h5')
     metric = 'val_accuracy'
     # metric = 'val_accuracy'
     batch_size = 1
@@ -218,7 +218,7 @@ if int(to_train) % 2 == 0:
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
-        tf.keras.callbacks.ModelCheckpoint(filepath='./model_for_semantic_segmentation.h5', monitor=metric,
+        tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels.h5', monitor=metric,
                                            verbose=2, save_best_only=True, mode='max')
     ]
 
@@ -235,12 +235,12 @@ if int(to_train) % 2 == 0:
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('model_for_semantic_segmentation_backup_0806.h5')
+    model.load_weights('semantic_segmentation_all_labels.h5')
 
 train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
-random_images_idx = random.sample(train_ids, 100)
-X_train = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-ground_truth = np.zeros((100, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+random_images_idx = random.sample(train_ids, 5)
+X_train = np.zeros((5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+ground_truth = np.zeros((5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 
 for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
     img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
