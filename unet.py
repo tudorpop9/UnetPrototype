@@ -77,7 +77,7 @@ data_set = DataSetTool.DataSetTool(DST_PARENT_DIR, PARENT_DIR, ORIGINAL_PATH, SE
 
 
 # create initial model
-def create_model():
+def create_corssentropy_model():
     # Input layer
     inputs = tf.keras.layers.Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
 
@@ -158,11 +158,97 @@ def create_model():
     adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
     # categorical_crossentropy
     model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
+    # model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
+    model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
     model.summary()
 
     return model
 
+
+def create_corssentropy_7mil_model():
+    # Input layer
+    inputs = tf.keras.layers.Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
+
+    # Converts pixel value to float, and normalizes it
+    s = tf.keras.layers.Lambda(lambda x: x / 255)(inputs)
+
+    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
+    c1 = tf.keras.layers.Dropout(0.1)(c1)
+    c1 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
+    p1 = tf.keras.layers.MaxPooling2D((2, 2))(c1)
+
+    c2 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
+    c2 = tf.keras.layers.Dropout(0.1)(c2)
+    c2 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c2)
+    p2 = tf.keras.layers.MaxPooling2D((2, 2))(c2)
+
+    c3 = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p2)
+    c3 = tf.keras.layers.Dropout(0.2)(c3)
+    c3 = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c3)
+    p3 = tf.keras.layers.MaxPooling2D((2, 2))(c3)
+
+    c4 = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p3)
+    c4 = tf.keras.layers.Dropout(0.2)(c4)
+    c4 = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c4)
+    p4 = tf.keras.layers.MaxPooling2D((2, 2))(c4)
+
+    c5 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p4)
+    c5 = tf.keras.layers.Dropout(0.3)(c5)
+    c5 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c5)
+    p5 = tf.keras.layers.MaxPooling2D((2, 2))(c5)
+
+    c61 = tf.keras.layers.Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p5)
+    c61 = tf.keras.layers.Dropout(0.3)(c61)
+    c61 = tf.keras.layers.Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c61)
+
+    u6 = tf.keras.layers.Conv2DTranspose(256, (2, 2), strides=(2, 2), padding='same')(c61)
+    # u6 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u6)
+    u6 = tf.keras.layers.concatenate([u6, c5])
+    c6 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u6)
+    c6 = tf.keras.layers.Dropout(0.3)(c6)
+    c6 = tf.keras.layers.Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c6)
+
+    u62 = tf.keras.layers.Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(c6)
+    u62 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u62)
+    u62 = tf.keras.layers.concatenate([u62, c4])
+    c62 = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u62)
+    c62 = tf.keras.layers.Dropout(0.2)(c62)
+    c62 = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c62)
+
+    u7 = tf.keras.layers.Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(c62)
+    # u7 = tf.keras.layers.ZeroPadding2D(padding=((0, 0), (0, 0)))(u7)
+    u7 = tf.keras.layers.concatenate([u7, c3])
+    c7 = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u7)
+    c7 = tf.keras.layers.Dropout(0.2)(c7)
+    c7 = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c7)
+
+    u8 = tf.keras.layers.Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
+    # u8 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u8)
+    u8 = tf.keras.layers.concatenate([u8, c2])
+    c8 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u8)
+    c8 = tf.keras.layers.Dropout(0.1)(c8)
+    c8 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c8)
+
+    u9 = tf.keras.layers.Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same')(c8)
+    u9 = tf.keras.layers.ZeroPadding2D(padding=((0, 0), (0, 0)))(u9)
+    u9 = tf.keras.layers.concatenate([u9, c1], axis=3)
+    c9 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u9)
+    c9 = tf.keras.layers.Dropout(0.1)(c9)
+    c9 = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
+
+    # c9 = tf.keras.layers.Conv2D(6, (1, 1), activation='softmax')(c9)
+
+    outputs = tf.keras.layers.Conv2D(6, (1, 1), activation='softmax')(c9)
+    # outputs = tf.keras.layers.Lambda(lambda x: x*255)(outputs)
+
+    adamOptimizer = tf.keras.optimizers.Adam(lr=0.0001)
+    # categorical_crossentropy
+    model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
+    # model.compile(optimizer=adamOptimizer, loss=dice_coef_loss, metrics=['accuracy'], run_eagerly=True)
+    model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
+    model.summary()
+
+    return model
 
 
 # some loss functions form stackoverflow and what not
@@ -194,7 +280,8 @@ def dice_coef_loss(y_true, y_pred):
 # exit(3)
 
 # creates the unet
-model = create_model()
+# model = create_model()
+model = create_corssentropy_7mil_model()
 # model = create_simpler_model()
 
 # waits for a decizion to train, or not to train
@@ -209,7 +296,8 @@ print('One hot encoding labeled images..')
 current_day = datetime.datetime.now()
 # if flag is an even number we perform a fit operation, training the model and save its best results
 if int(to_train) % 2 == 0:
-    model.load_weights('semantic_segmentation_all_labels.h5')
+    # model.load_weights('semantic_segmentation_all_labels_crossentropy.h5')
+    model.load_weights('semantic_segmentation_all_labels_crossentropy_7mil.h5')
     metric = 'val_accuracy'
     # metric = 'val_accuracy'
     batch_size = 1
@@ -218,7 +306,10 @@ if int(to_train) % 2 == 0:
         # tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.TensorBoard(
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
-        tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels.h5', monitor=metric,
+        # tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels_crossentropy.h5', monitor=metric,
+        #                                    verbose=2, save_best_only=True, mode='max')
+        tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels_crossentropy_7mil.h5',
+                                           monitor=metric,
                                            verbose=2, save_best_only=True, mode='max')
     ]
 
@@ -232,15 +323,18 @@ if int(to_train) % 2 == 0:
               # workers=4,
               epochs=50,
               verbose=1)
+    model.save_weights('./last_epoch_weights_7mil.h5')
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('semantic_segmentation_all_labels.h5')
+    # model.load_weights('semantic_segmentation_all_labels_crossentropy.h5')
+    model.load_weights('semantic_segmentation_all_labels_crossentropy_7mil.h5')
 
+test_set_size = 5
 train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
-random_images_idx = random.sample(train_ids, 5)
-X_train = np.zeros((5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-ground_truth = np.zeros((5, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+random_images_idx = random.sample(train_ids, test_set_size)
+X_train = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+ground_truth = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
 
 for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
     img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
@@ -258,7 +352,7 @@ print("Enter 0 to exit, any other number to predict another image: ")
 continue_flag = input()
 
 while int(continue_flag) > 0:
-    i = random.randint(0, len(preds_train))
+    i = random.randint(0, test_set_size - 1)
 
     trainPath = "%s%sstrain%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
     controlPath = "%s%scontrolMask%03d.png" % (
