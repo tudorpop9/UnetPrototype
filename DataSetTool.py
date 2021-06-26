@@ -1,6 +1,9 @@
+import json
 import os
 import random
 import threading
+
+import keras
 import tifffile
 import numpy as np
 import tensorflow as tf
@@ -12,6 +15,8 @@ from cv2 import cv2
 from PIL import Image
 from skimage.io import imread
 from tqdm import tqdm
+from sklearn.preprocessing import normalize
+from sklearn.metrics import classification_report
 
 # Input images size
 # original dimensions/16
@@ -20,6 +25,8 @@ IMG_HEIGHT = 1000
 IMG_CHANNELS = 3
 SAMPLE_SIZE = 20000
 BATCH_SIZE = 16
+dict_stats_file = 'dict_stats.json'
+confusion_matrix_file = 'confusion_matrix.json'
 # current labels
 labels = {
     0: (255, 255, 255),  # white, paved area/road
@@ -50,8 +57,10 @@ one_hot_labels = {
 
 N_OF_LABELS = len(labels)
 seed = np.random.seed(42)
+random.seed(42)
 
 
+# tried to make tf.input pipeline to wrok.. it didn't
 def decode_png_img(img):
     img = tf.image.decode_png(img, channels=IMG_CHANNELS)
     img = tf.image.convert_image_dtype(img, tf.uint8)
@@ -59,6 +68,7 @@ def decode_png_img(img):
     return img
 
 
+# tried to make tf.input pipeline to wrok.. it didn't
 def decode_tif_img(img):
     # img = tf.image.decode_image(img, channels=N_OF_LABELS, dtype=tf.dtypes.uint8)
     img = one_hot_enc(img.numpy())
@@ -68,6 +78,7 @@ def decode_tif_img(img):
     return img
 
 
+# tried to make tf.input pipeline to wrok.. it didn't
 def one_hot_enc(input_img):
     encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
     # print(input_img)
@@ -84,6 +95,7 @@ def one_hot_enc(input_img):
 
 
 # actually loads an image, its maks and returns the pair
+# tried to make tf.input pipeline to wrok.. it didn't
 def combine_img_masks(original_path: tf.Tensor, segmented_path: tf.Tensor):
     original_image = tf.io.read_file(original_path)
     original_image = decode_png_img(original_image)
@@ -120,6 +132,7 @@ class DataSetTool:
     def check_road_vaihingen(self, b, g, r):
         return b == 255 and g == 255 and r == 255
 
+    # returns all unique classes (colors) detected in a set of images
     def get_unique_values(self, images):
         return_array = []
         for img in images:
@@ -132,7 +145,8 @@ class DataSetTool:
                         return_array.append((b, g, r))
         return return_array
 
-    def to_one_hot(self, input_img):
+    # converts the rgb ground truth to the one-hot version
+    def _to_one_hot(self, input_img):
         encoded_img = np.zeros((IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
         # check each pixel of current mask
@@ -147,6 +161,7 @@ class DataSetTool:
 
         return encoded_img
 
+    # returns channel index that has the greatest value
     def get_max_channel_idx(self, image_channels):
         max_idx = 0
         for channel in image_channels:
@@ -156,9 +171,9 @@ class DataSetTool:
 
         return max_idx
 
+    # prases the model prediction to an rgb image similar to the ground-truth version
     def parse_prediction(self, predicted_image, labels):
         return_array = np.zeros((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-        # return_array = np.zeros((1000, 1000, IMG_CHANNELS), dtype=np.uint8)
 
         for row_idx in range(0, predicted_image.shape[0]):
             for col_idx in range(0, predicted_image.shape[1]):
@@ -171,7 +186,7 @@ class DataSetTool:
 
         return return_array
 
-    # returns the labeled ids that are not encoded yet
+    # returns the labeled ids of images that are not encoded yet
     def get_labeled_encoded_difference(self, labeled_img_ids, encoded_img_ids):
         difference_list = []
         # for each label id
@@ -203,20 +218,14 @@ class DataSetTool:
             tifffile.imwrite(new_file_name, encoded_img)
             # saves the encoded image
 
+    # used to convert an already augmented dataset that has not been one-hot-encoded
+    # augmentation funtion already one-hot-encodes images because its more efficient
     def to_one_hot_and_save(self):
         segmented_ids = os.listdir(self.PARENT_DIR + self.SEGMENTED_RESIZED_PATH)
         one_hot_ids = os.listdir(self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH)
-        # obtains the images that are not encoded
+        # obtains the images that are not encoded in case of an interuption while converting
         not_encoded_ids = self.get_labeled_encoded_difference(segmented_ids, one_hot_ids)
 
-        # labeled_images = np.zeros((len(not_encoded_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-        # labeled_images = np.zeros((20, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-        #
-        # for file_index, file_name in tqdm(enumerate(not_encoded_ids), total=len(not_encoded_ids)):
-        #     mask_ = imread(self.DST_PARENT_DIR + self.SEGMENTED_RESIZED_PATH + file_name)[:, :, :IMG_CHANNELS]
-        #     labeled_images[file_index] = mask_
-        #     if file_index == 19:
-        #         break
         no_threads = 2
         aug_threads = []
         lock = threading.Lock()
@@ -239,6 +248,7 @@ class DataSetTool:
         for th in aug_threads:
             th.join()
 
+    # manual batching, without a generator => multiple train sessions with 2k images at a time
     def batch_data(self, dataset, batch_size):
         data_len = len(dataset)
         nr_of_batches = int(data_len / batch_size)
@@ -259,6 +269,58 @@ class DataSetTool:
 
         return batch_array
 
+    # function that a thread uses to augment dataset
+    def thread_aug_data_function(self, data_fragment, source_orig_path, source_segm_path, destination_orig_path,
+                                 destination_segm_path):
+        for n, id_ in tqdm(enumerate(data_fragment), total=len(data_fragment)):
+
+            original_img = imread(source_orig_path + id_)[:, :, :IMG_CHANNELS]
+
+            # reads and encodes the image
+            segmented_img = imread(source_segm_path + id_)[:, :, :IMG_CHANNELS]
+            segmented_img = self._to_one_hot(segmented_img)
+
+            aug_originals = [original_img]
+            aug_segmented = [segmented_img]
+
+            # roatated images
+            rot_o_90 = np.rot90(original_img, k=1)
+            aug_originals.append(rot_o_90)
+            rot_o_180 = np.rot90(original_img, k=2)
+            aug_originals.append(rot_o_180)
+            rot_o_270 = np.rot90(original_img, k=3)
+            aug_originals.append(rot_o_270)
+
+            # horizontally flipped images
+            flip_o_h_org = np.flip(original_img, 1)
+            aug_originals.append(flip_o_h_org)
+            flip_o_h_90 = np.flip(rot_o_90, 1)
+            aug_originals.append(flip_o_h_90)
+
+            # same operations for segmented data
+            rot_s_90 = np.rot90(segmented_img, k=1)
+            aug_segmented.append(rot_s_90)
+            rot_s_180 = np.rot90(segmented_img, k=2)
+            aug_segmented.append(rot_s_180)
+            rot_s_270 = np.rot90(segmented_img, k=3)
+            aug_segmented.append(rot_s_270)
+
+            flip_s_h_org = np.flip(segmented_img, 1)
+            aug_segmented.append(flip_s_h_org)
+            flip_s_h_90 = np.flip(rot_s_90, 1)
+            aug_segmented.append(flip_s_h_90)
+
+            for i in range(0, len(aug_segmented)):
+                # saves all the augmented originals
+                rgb_orig = cv2.cvtColor(aug_originals[i], cv2.COLOR_BGR2RGB)
+                cv2.imwrite(destination_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
+
+                # saves all the augmented segmented
+                new_file_name = self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + id_.split('.')[0] + '_' + str(
+                    (i + 1)) + '.tif'
+                tifffile.imwrite(new_file_name, aug_segmented[i])
+
+    # augments dataset and one-hot encodes ground-truth in a multi-thread way
     def augment_data_set(self):
         data_ids = os.listdir(self.PARENT_DIR + self.DST_ORIGINAL_PATH)
         one_hot_ids = os.listdir(self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH)
@@ -402,59 +464,6 @@ class DataSetTool:
                         fragment)
                     count = count + 1
 
-    def thread_aug_data_function(self, data_fragment, source_orig_path, source_segm_path, destination_orig_path, destination_segm_path):
-        for n, id_ in tqdm(enumerate(data_fragment), total=len(data_fragment)):
-            # print(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + id_)
-            original_img = imread(source_orig_path + id_)[:, :, :IMG_CHANNELS]
-            # reads and encodes the image
-            segmented_img = imread(source_segm_path + id_)[:, :, :IMG_CHANNELS]
-            segmented_img = self.to_one_hot(segmented_img)
-
-            aug_originals = [original_img]
-            aug_segmented = [segmented_img]
-
-            # roatated images
-            rot_o_90 = np.rot90(original_img, k=1)
-            aug_originals.append(rot_o_90)
-            rot_o_180 = np.rot90(original_img, k=2)
-            aug_originals.append(rot_o_180)
-            rot_o_270 = np.rot90(original_img, k=3)
-            aug_originals.append(rot_o_270)
-
-            # horizontally flipped images
-            flip_o_h_org = np.flip(original_img, 1)
-            aug_originals.append(flip_o_h_org)
-            flip_o_h_90 = np.flip(rot_o_90, 1)
-            aug_originals.append(flip_o_h_90)
-
-
-            # same operations for segmented data
-            rot_s_90 = np.rot90(segmented_img, k=1)
-            aug_segmented.append(rot_s_90)
-            rot_s_180 = np.rot90(segmented_img, k=2)
-            aug_segmented.append(rot_s_180)
-            rot_s_270 = np.rot90(segmented_img, k=3)
-            aug_segmented.append(rot_s_270)
-
-            flip_s_h_org = np.flip(segmented_img, 1)
-            aug_segmented.append(flip_s_h_org)
-            flip_s_h_90 = np.flip(rot_s_90, 1)
-            aug_segmented.append(flip_s_h_90)
-
-
-            for i in range(0, len(aug_segmented)):
-                # saves all the augmented originals
-                rgb_orig = cv2.cvtColor(aug_originals[i], cv2.COLOR_BGR2RGB)
-                cv2.imwrite(destination_orig_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', rgb_orig)
-                # saves all the augmented segmented
-                # rgb_segm = cv2.cvtColor(aug_segmented[i], cv2.COLOR_BGR2RGB)
-                # cv2.imwrite(destination_segm_path + id_.split('.')[0] + '_' + str((i + 1)) + '.png', aug_segmented[i])
-                new_file_name = self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + id_.split('.')[0] + '_' + str((i + 1)) + '.tif'
-                tifffile.imwrite(new_file_name, aug_segmented[i])
-
-
-        # checking initial results
-
     # returns two custom AerialDataGenerator, one for training and another for validation
     # by default validation split is 0.2 but if another value is required the parameter must be specified
     # if validation split is less than 0.0 or greater than 1.0 the validation generator shall be None
@@ -531,37 +540,124 @@ class DataSetTool:
                                 deterministic=False)
 
         train_ds_batched = train_ds.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE).cache()
-        # print(train_ds.element_spec)
-        # train_ds.prefetch(10)
-        # for image, label in train_ds.take(1):
-        #     print(image.shape)
-        #     print(label.shape)
-        #     print()
 
-        # exit(1)
         return train_ds_batched
 
-    def print_per_class_statistics(self, ground_truth_set, predicition_set):
-        class_statistics = {
-            (255, 255, 255): (0, 0),  # white, paved area/road
-            (0, 255, 255): (0, 0),  # light blue, low vegetation
-            (0, 0, 255): (0, 0),  # blue, buildings
-            (0, 255, 0): (0, 0),  # green, high vegetation
-            (255, 0, 0): (0, 0),  # red, bare earth
-            (255, 255, 0): (0, 0)  # yellow, vehicle/car
+    # returns a dict like
+    # {'label 1': {'precision': 0.5,
+    #              'recall': 1.0,
+    #              'f1-score': 0.67,
+    #              'support': 1},
+    #  'label 2': {...},
+    #  ...
+    #  }
+    # from sklearn classification_report return type
+    def _get_statistics_dict(self):
+        stats = {
+            '0': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            '1': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            '2': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            '3': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            '4': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            '5': {'precision': 0.0,
+                  'recall': 0.0,
+                  'f1-score': 0.0,
+                  'support': 0},
+            'accuracy': 0.0,
+            'macro avg': {'precision': 0.0,
+                          'recall': 0.0,
+                          'f1-score': 0.0,
+                          'support': 0},
+            'weighted avg': {'precision': 0.0,
+                             'recall': 0.0,
+                             'f1-score': 0.0,
+                             'support': 0},
         }
+        return stats
 
-        for idx in range(0, len(predicition_set)):
-            pred = self.parse_prediction(predicition_set[idx], labels)
-            for i in range(0, pred.shape[0]):
-                for j in range(0, pred.shape[1]):
-                    hit, miss = class_statistics[tuple(ground_truth_set[idx][i][j])]
-                    if pred[i][j] == ground_truth_set[idx][i][j]:
-                        hit += 1
+    def print_per_class_statistics(self, validation_split, model: keras.Model):
+
+        global normalized_conf_matrix, initial_conf_matrix
+
+        train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        random.shuffle(train_ids)
+        split_idx = int(len(train_ids) * validation_split)
+        validation_fragment = train_ids[:split_idx]
+        validation_size = len(validation_fragment)
+
+        batch_size = 4
+        batch_idx = 0
+        no_batches = 0
+
+        images = np.zeros((4, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        ground_truth = np.zeros((4, IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+
+        stats = self._get_statistics_dict()
+        normalized_conf_matrix = np.zeros((N_OF_LABELS, N_OF_LABELS), dtype=np.float)
+
+        for n, id_ in tqdm(enumerate(validation_fragment), total=len(validation_fragment)):
+            img = imread(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+            images[batch_idx] = img
+
+            mask = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
+                   :N_OF_LABELS]
+            ground_truth[batch_idx] = mask
+            batch_idx += 1
+
+            if batch_idx == batch_size - 1 or n == validation_size - 1:
+                batch_idx = 0
+                no_batches += 1
+
+                predictions = model.predict(images)
+                predictions_max_score = np.argmax(predictions, axis=3).flatten()
+                ground_truth_max_score = np.argmax(ground_truth, axis=3).flatten()
+
+                initial_conf_matrix = tf.math.confusion_matrix(num_classes=6,
+                                                               labels=ground_truth_max_score,
+                                                               predictions=predictions_max_score).numpy()
+                normalized_conf_matrix += np.around(normalize(initial_conf_matrix, axis=1, norm='l1'), decimals=2)
+
+                report = classification_report(ground_truth_max_score, predictions_max_score, output_dict=True)
+
+                for label_i in report.keys():
+                    if label_i != 'accuracy':
+                        for metric in report[label_i].keys():
+                            stats[label_i][metric] += report[label_i][metric]
                     else:
-                        miss += 1
-                    class_statistics[tuple(ground_truth_set[idx][i][j])] = (hit, miss)
+                        stats[label_i] += report[label_i]
 
-        for i in range(0, len(labels)):
-            hit, miss = class_statistics[labels[i]]
-            print(labels_name[i] + ' accuracy: ' + str(hit / (hit + miss)) + '\n')
+        # final avg statistics
+        for label_i in stats.keys():
+            if label_i != 'accuracy':
+                for metric in stats[label_i].keys():
+                    stats[label_i][metric] /= no_batches
+            else:
+                stats[label_i] /= no_batches
+        print(stats)
+
+        # store it in a file
+        with open(dict_stats_file, 'w') as file:
+            json.dump(stats, file, indent=4)
+
+        # final confusion matrix
+        normalized_conf_matrix = np.around(normalize(normalized_conf_matrix, axis=1, norm='l1'), decimals=2)
+        print(normalized_conf_matrix)
+
+        # # store it in a file
+        # with open(confusion_matrix_file, 'w') as file:
+        #     json.dump(normalized_conf_matrix, file, indent=4)
