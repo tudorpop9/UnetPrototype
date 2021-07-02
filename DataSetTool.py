@@ -475,10 +475,10 @@ class DataSetTool:
     def get_generator(self, validation_split=0.2, batch_size=20):
 
         if not os.path.exists(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH):
-            print('path: "'+ self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH +' " not found')
+            print('path: "' + self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH + ' " not found')
             exit(1)
         if not os.path.exists(self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH):
-            print('path: "' + self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH +' " not found')
+            print('path: "' + self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + ' " not found')
             exit(1)
 
         train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
@@ -727,16 +727,30 @@ class DataSetTool:
             (255, 255, 0): 0.0  # yellow, vehicle/car
         }
 
+        class_aux = {
+            (255, 255, 255): 0.0,  # white, paved area/road
+            (0, 255, 255): 0.0,  # light blue, low vegetation
+            (0, 0, 255): 0.0,  # blue, buildings
+            (0, 255, 0): 0.0,  # green, high vegetation
+            (255, 0, 0): 0.0,  # red, bare earth
+            (255, 255, 0): 0.0  # yellow, vehicle/car
+        }
+
         for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
             img = imread(self.PARENT_DIR + self.DST_SEGMENTED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
             for row_idx in range(0, img.shape[0]):
                 for col_idx in range(0, img.shape[1]):
-                    class_cnt[tuple(img[row_idx, col_idx])] += 1.0
+                    class_aux[tuple(img[row_idx, col_idx])] += 1.0
+                    total_no_pixels += 1.0
+            for key in class_aux.keys():
+                class_aux[key] /= float(total_no_pixels)
+                class_cnt[key] += class_aux[key]
 
-            total_no_pixels += 4000000.0
+            total_no_pixels = 0.0
+            print(class_aux)
+
         for key in class_cnt.keys():
-            class_cnt[key] /= float(total_no_pixels)
-        print(class_cnt)
+            class_cnt[key] /= len(train_ids)
         with open('./class_balance.json', 'w') as file:
             json.dump(class_cnt, file, indent=4)
         exit(0)
