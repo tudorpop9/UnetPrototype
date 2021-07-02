@@ -1,18 +1,19 @@
 import datetime
 import os
-import random
-
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from skimage.io import imread, imshow
-from tqdm import tqdm
+from tensorflow.python.framework.errors_impl import ResourceExhaustedError
 import DataSetTool
 import Unet
 
+# IMG_WIDTH = 1000
+# IMG_HEIGHT = 1000
+weights_file_name = "./semantic_segmentation_all_labels_crossentropy_7mil_090_val_Acc.h5"
+
 IMG_WIDTH = 1000
 IMG_HEIGHT = 1000
+
 IMG_CHANNELS = 3
 
 SAMPLE_SIZE = 20000
@@ -83,25 +84,30 @@ unet = Unet.Unet()
 # data_set.augment_data_set()
 # print('Done augmenting dataset')
 
+# class ratio balance, the program will shut down after this function (exit(1))
+# data_set.get_data_set_class_balance()
+
+
 ##################################################################### create model #######################################################################
 # creates the unet
-model = unet.create_corssentropy_7mil_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, input_channels=IMG_CHANNELS,
-                                            output_channels=N_OF_LABELS, learning_rate=LEARNING_RATE)
+# model = unet.create_corssentropy_7mil_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, input_channels=IMG_CHANNELS,
+#                                             output_channels=N_OF_LABELS, learning_rate=LEARNING_RATE)
 
+
+model = unet.create_corssentropy_7mil_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, output_channels=N_OF_LABELS,
+                                       learning_rate=LEARNING_RATE)
 # waits for a decizion to train, or not to train
-print('Enter a number: odd = load weights, or even = train model ')
+print('Do you want to train the model first? [y/n]')
 to_train = input()
 
-# applies one hot encoding on label images
-print('One hot encoding labeled images..')
-# labels, one_hot_y_train = to_one_hot(N_OF_LABELS, Y_train)
-
-
 current_day = datetime.datetime.now()
+
 # if flag is an even number we perform a fit operation, training the model and save its best results
-if int(to_train) % 2 == 0:
-    # model.load_weights('semantic_segmentation_all_labels_crossentropy.h5')
-    model.load_weights('semantic_segmentation_all_labels_crossentropy_7mil.h5')
+if to_train.lower() == 'y':
+    if os.path.exists(weights_file_name):
+        print('Loading pre-trained weights')
+        model.load_weights(weights_file_name)
+
     metric = 'val_accuracy'
     batch_size = 1
 
@@ -110,74 +116,38 @@ if int(to_train) % 2 == 0:
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
         # tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels_crossentropy.h5', monitor=metric,
         #                                    verbose=2, save_best_only=True, mode='max')
-        tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels_crossentropy_7mil.h5',
+        tf.keras.callbacks.ModelCheckpoint(filepath=weights_file_name,
                                            monitor=metric,
                                            verbose=2, save_best_only=True, mode='max')
     ]
 
     train_generator, validation_generator = data_set.get_generator(validation_split=0.2, batch_size=batch_size)
-    model.fit(train_generator,
-              validation_data=validation_generator,
-              batch_size=batch_size,
-              callbacks=callbacks,
-              epochs=50,
-              verbose=1)
+    try:
+        model.fit(train_generator,
+                  validation_data=validation_generator,
+                  batch_size=batch_size,
+                  callbacks=callbacks,
+                  epochs=50,
+                  verbose=1)
+    except ResourceExhaustedError:
+        print('\nNot enough resources, decrease batch size or lower gpu usage\n')
+        exit(1)
+
     model.save_weights('./last_epoch_weights_7mil.h5')
 
 # otherwise we load the weights from another run
 else:
-    model.load_weights('semantic_segmentation_all_labels_crossentropy_7mil.h5')
+    if os.path.exists(weights_file_name):
+        print('Loading pre-trained weights')
+        model.load_weights(weights_file_name)
 
-data_set.print_per_class_statistics(validation_split=0.2, model=model)
-exit(1)
+try:
+    # data_set.print_per_class_statistics(validation_split=0.2, model=model)
+    # data_set.segment_data(model)
+    # data_set.get_data_set_class_balance()
+    # exit(1)
+    data_set.manual_model_testing(model)
+except ResourceExhaustedError:
+    print('\nNot enough resources, decrease batch size or lower gpu usage\n')
+    exit(1)
 
-test_set_size = 5
-train_ids = os.listdir(PARENT_DIR + ORIGINAL_RESIZED_PATH)
-random_images_idx = random.sample(train_ids, test_set_size)
-
-X_train = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-ground_truth = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-
-for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
-    img = imread(DST_PARENT_DIR + ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
-    X_train[n] = img
-
-    mask = imread(DST_PARENT_DIR + SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
-           :N_OF_LABELS]
-    ground_truth[n] = data_set.parse_prediction(mask, labels)
-
-preds_train = model.predict(X_train, verbose=1)
-
-# data_set.print_per_class_statistics(ground_truth, preds_train)
-
-print("Enter 0 to exit, any other number to predict another image: ")
-continue_flag = input()
-
-while int(continue_flag) > 0:
-    i = random.randint(0, test_set_size - 1)
-
-    trainPath = "%s%sstrain%03d.png" % (RESULTS_PATH, LABEL_TYPES_PATH, i)
-    controlPath = "%s%scontrolMask%03d.png" % (
-        RESULTS_PATH, LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(current_day.day).zfill(2) + '/', i)
-    predictionPath = "%s%sprediction%03d.png" % (
-        RESULTS_PATH, LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(current_day.day).zfill(2) + '/', i)
-
-    today_result_dir = RESULTS_PATH + LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)
-    if not os.path.exists(today_result_dir):
-        os.mkdir(today_result_dir)
-
-    imshow(X_train[i])
-    plt.savefig(trainPath)
-    plt.show()
-
-    imshow(np.squeeze(ground_truth[i]))
-    plt.savefig(controlPath)
-    plt.show()
-
-    interpreted_prediction = data_set.parse_prediction(preds_train[i], labels)
-    imshow(np.squeeze(interpreted_prediction))
-    plt.savefig(predictionPath)
-    plt.show()
-
-    print("Enter 0 to exit, any positive number to predict another image: ")
-    continue_flag = input()

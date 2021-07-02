@@ -227,6 +227,8 @@ class Unet:
             c7)
 
         u8 = tf.keras.layers.Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
+        # #for 250 model
+        # u8 = tf.keras.layers.ZeroPadding2D(padding=((0, 1), (0, 1)))(u8)
         u8 = tf.keras.layers.concatenate([u8, c2])
         c8 = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(
             u8)
@@ -289,7 +291,7 @@ class Unet:
         p5 = tf.keras.layers.MaxPooling2D((2, 2))(c5)
 
         c61 = tf.keras.layers.Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p5)
-        c61 = tf.keras.layers.Dropout(0.4)(c61)
+        c61 = tf.keras.layers.Dropout(0.3)(c61)
         c61 = tf.keras.layers.Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(
             c61)
 
@@ -332,8 +334,7 @@ class Unet:
         adamOptimizer = tf.keras.optimizers.Adam(lr=learning_rate)
 
         model = tf.keras.Model(inputs=[inputs], outputs=[outputs])
-        model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy','categorical_accuracy'], run_eagerly=True)
-        # model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
+        model.compile(optimizer=adamOptimizer, loss='categorical_crossentropy', metrics=['accuracy'], run_eagerly=True)
         model.summary()
 
         return model

@@ -1,19 +1,24 @@
+import datetime
 import json
 import os
 import random
 import threading
+import time
 
 import keras
 import tifffile
 import numpy as np
 import tensorflow as tf
 import io
+
+from matplotlib import pyplot as plt
+
 import AerialDataGenerator as adGenerator
 
 from threading import Thread
 from cv2 import cv2
 from PIL import Image
-from skimage.io import imread
+from skimage.io import imread, imshow
 from tqdm import tqdm
 from sklearn.preprocessing import normalize
 from sklearn.metrics import classification_report
@@ -469,6 +474,13 @@ class DataSetTool:
     # if validation split is less than 0.0 or greater than 1.0 the validation generator shall be None
     def get_generator(self, validation_split=0.2, batch_size=20):
 
+        if not os.path.exists(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH):
+            print('path: "'+ self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH +' " not found')
+            exit(1)
+        if not os.path.exists(self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH):
+            print('path: "' + self.PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH +' " not found')
+            exit(1)
+
         train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
         random.shuffle(train_ids)
         train_fragment = []
@@ -604,8 +616,8 @@ class DataSetTool:
         batch_idx = 0
         no_batches = 0
 
-        images = np.zeros((4, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-        ground_truth = np.zeros((4, IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
+        images = np.zeros((batch_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        ground_truth = np.zeros((batch_size, IMG_HEIGHT, IMG_WIDTH, N_OF_LABELS), dtype=np.uint8)
 
         stats = self._get_statistics_dict()
         normalized_conf_matrix = np.zeros((N_OF_LABELS, N_OF_LABELS), dtype=np.float)
@@ -619,6 +631,7 @@ class DataSetTool:
             ground_truth[batch_idx] = mask
             batch_idx += 1
 
+            # last image batch or a complete batch
             if batch_idx == batch_size - 1 or n == validation_size - 1:
                 batch_idx = 0
                 no_batches += 1
@@ -659,5 +672,127 @@ class DataSetTool:
         print(normalized_conf_matrix)
 
         # # store it in a file
-        # with open(confusion_matrix_file, 'w') as file:
-        #     json.dump(normalized_conf_matrix, file, indent=4)
+        conf_mat_dict = {
+            'confusion_matrix': normalized_conf_matrix
+        }
+        with open(confusion_matrix_file, 'w') as file:
+            json.dump(conf_mat_dict, file, indent=4)
+
+    def segment_data(self, model: keras.Model):
+
+        train_ids = os.listdir(self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH)
+
+        validation_size = len(train_ids)
+
+        batch_size = 4
+        batch_idx = 0
+        no_batches = 0
+
+        images = np.zeros((batch_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        image_name_ids = []
+
+        predictionPath = './Results/000_segmentation_results/'
+
+        for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
+            img = imread(self.PARENT_DIR + self.DST_ORIGINAL_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+            images[batch_idx] = img
+            image_name_ids.append(train_ids[n])
+            batch_idx += 1
+            if batch_idx == batch_size or n == validation_size - 1:
+                batch_idx = 0
+                no_batches += 1
+
+                # start_time = time.time()
+                predictions = model.predict(images)
+                # print("--- %s seconds ---" % (time.time() - start_time))
+
+                for i in range(batch_size):
+                    parsed_image = self.parse_prediction(predictions[i], labels)
+                    parsed_image = cv2.cvtColor(parsed_image, cv2.COLOR_BGR2RGB)
+
+                    cv2.imwrite(predictionPath + image_name_ids[i], parsed_image)
+
+                image_name_ids.clear()
+
+    def get_data_set_class_balance(self):
+        train_ids = os.listdir(self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH)
+
+        total_no_pixels = 0
+        class_cnt = {
+            (255, 255, 255): 0.0,  # white, paved area/road
+            (0, 255, 255): 0.0,  # light blue, low vegetation
+            (0, 0, 255): 0.0,  # blue, buildings
+            (0, 255, 0): 0.0,  # green, high vegetation
+            (255, 0, 0): 0.0,  # red, bare earth
+            (255, 255, 0): 0.0  # yellow, vehicle/car
+        }
+
+        for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
+            img = imread(self.PARENT_DIR + self.DST_SEGMENTED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+            for row_idx in range(0, img.shape[0]):
+                for col_idx in range(0, img.shape[1]):
+                    class_cnt[tuple(img[row_idx, col_idx])] += 1.0
+
+            total_no_pixels += 4000000.0
+        for key in class_cnt.keys():
+            class_cnt[key] /= float(total_no_pixels)
+        print(class_cnt)
+        with open('./class_balance.json', 'w') as file:
+            json.dump(class_cnt, file, indent=4)
+        exit(0)
+
+    def manual_model_testing(self, model: keras.Model):
+        current_day = datetime.datetime.now()
+        test_set_size = 5
+        train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        random_images_idx = random.sample(train_ids, test_set_size)
+
+        X_train = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+        ground_truth = np.zeros((test_set_size, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+
+        for n, id_ in tqdm(enumerate(random_images_idx), total=len(random_images_idx)):
+            img = imread(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH + train_ids[n])[:, :, :IMG_CHANNELS]
+            X_train[n] = img
+
+            mask = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + train_ids[n].split('.')[0] + '.tif')[:, :,
+                   :N_OF_LABELS]
+            ground_truth[n] = self.parse_prediction(mask, labels)
+
+        preds_train = model.predict(X_train, verbose=1)
+
+        print("Enter 0 to exit, any other number to predict an image: ")
+        continue_flag = input()
+
+        while int(continue_flag) > 0:
+            i = random.randint(0, test_set_size - 1)
+
+            trainPath = "%s%sstrain%03d.png" % (self.RESULTS_PATH, self.LABEL_TYPES_PATH, i)
+            controlPath = "%s%scontrolMask%03d.png" % (
+                self.RESULTS_PATH,
+                self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(current_day.day).zfill(2) + '/',
+                i)
+            predictionPath = "%s%sprediction%03d.png" % (
+                self.RESULTS_PATH,
+                self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(current_day.day).zfill(2) + '/',
+                i)
+
+            today_result_dir = self.RESULTS_PATH + self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(
+                current_day.day).zfill(2)
+            if not os.path.exists(today_result_dir):
+                os.mkdir(today_result_dir)
+
+            imshow(X_train[i])
+            plt.savefig(trainPath)
+            plt.show()
+
+            imshow(np.squeeze(ground_truth[i]))
+            plt.savefig(controlPath)
+            plt.show()
+
+            interpreted_prediction = self.parse_prediction(preds_train[i], labels)
+            imshow(np.squeeze(interpreted_prediction))
+            plt.savefig(predictionPath)
+            plt.show()
+
+            print("Enter 0 to exit, any positive number to predict another image: ")
+            continue_flag = input()
