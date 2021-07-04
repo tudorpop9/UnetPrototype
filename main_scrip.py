@@ -114,8 +114,6 @@ if to_train.lower() == 'y':
     callbacks = [
         tf.keras.callbacks.TensorBoard(
             log_dir='logs' + '/logs_on_' + str(current_day.month).zfill(2) + str(current_day.day).zfill(2)),
-        # tf.keras.callbacks.ModelCheckpoint(filepath='./semantic_segmentation_all_labels_crossentropy.h5', monitor=metric,
-        #                                    verbose=2, save_best_only=True, mode='max')
         tf.keras.callbacks.ModelCheckpoint(filepath=weights_file_name,
                                            monitor=metric,
                                            verbose=2, save_best_only=True, mode='max')
@@ -144,9 +142,9 @@ else:
 try:
     # data_set.print_per_class_statistics(validation_split=0.2, model=model)
     # data_set.segment_data(model)
-    data_set.get_data_set_class_balance()
+    # data_set.get_data_set_class_balance()
     # exit(1)
-    # data_set.manual_model_testing(model)
+    data_set.manual_model_testing(model)
 except ResourceExhaustedError:
     print('\nNot enough resources, decrease batch size or lower gpu usage\n')
     exit(1)

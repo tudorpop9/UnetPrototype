@@ -602,6 +602,7 @@ class DataSetTool:
         }
         return stats
 
+    # saves and prints per class statistics on all validation set (conf matrix, precision, recall, f1...)
     def print_per_class_statistics(self, validation_split, model: keras.Model):
 
         global normalized_conf_matrix, initial_conf_matrix
@@ -678,6 +679,7 @@ class DataSetTool:
         with open(confusion_matrix_file, 'w') as file:
             json.dump(conf_mat_dict, file, indent=4)
 
+    # segments all images
     def segment_data(self, model: keras.Model):
 
         train_ids = os.listdir(self.DST_PARENT_DIR + self.DST_ORIGINAL_PATH)
@@ -714,6 +716,7 @@ class DataSetTool:
 
                 image_name_ids.clear()
 
+    # displays and saves on a file class balance for dataset
     def get_data_set_class_balance(self):
         train_ids = os.listdir(self.DST_PARENT_DIR + self.DST_SEGMENTED_PATH)
 
@@ -747,15 +750,17 @@ class DataSetTool:
                 class_cnt[key] += class_aux[key]
 
             total_no_pixels = 0.0
-            print(class_aux)
 
         for key in class_cnt.keys():
             class_cnt[key] /= len(train_ids)
-        with open('./class_balance.json', 'w') as file:
-            json.dump(class_cnt, file, indent=4)
+
+        print(class_cnt)
+        with open('./class_balance.txt', 'w') as file:
+            file.write(str(class_cnt))
         exit(0)
 
-    def manual_model_testing(self, model: keras.Model):
+    # old manual testing and 5 random chosen images
+    def old_manual_model_testing(self, model: keras.Model):
         current_day = datetime.datetime.now()
         test_set_size = 5
         train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
@@ -806,6 +811,85 @@ class DataSetTool:
             interpreted_prediction = self.parse_prediction(preds_train[i], labels)
             imshow(np.squeeze(interpreted_prediction))
             plt.savefig(predictionPath)
+            plt.show()
+
+            print("Enter 0 to exit, any positive number to predict another image: ")
+            continue_flag = input()
+
+    # randomly picks and segments an image from validation set
+    def manual_model_testing(self, model: keras.Model, validation_split=0.2):
+        current_day = datetime.datetime.now()
+
+        train_ids = os.listdir(self.PARENT_DIR + self.ORIGINAL_RESIZED_PATH)
+        random.shuffle(train_ids)
+        split_idx = int(len(train_ids) * validation_split)
+        validation_fragment = train_ids[:split_idx]
+        validation_set_size = len(validation_fragment)
+
+        original_image_as_np_array = np.zeros((1, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
+
+        print("Enter 0 to exit, any other number to predict an image: ")
+        continue_flag = input()
+
+        while int(continue_flag) > 0:
+
+            i = random.randint(0, validation_set_size - 1)
+            img_name = validation_fragment[i]
+            print("Chose a random image from validation set: " + str(i))
+
+            # generates paths for each image in the sample
+            original_img_path = "%s%s_original_%s" % (self.RESULTS_PATH,
+                                                      self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(
+                                                          current_day.day).zfill(2) + '/',
+                                                      img_name)
+            ground_truth_path = "%s%s_grTruth_%s" % (self.RESULTS_PATH,
+                                                     self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(
+                                                         current_day.day).zfill(2) + '/',
+                                                     img_name)
+            prediction_path = "%s%s_prediction_%s" % (self.RESULTS_PATH,
+                                                      self.LABEL_TYPES_PATH + str(current_day.month).zfill(2) + str(
+                                                          current_day.day).zfill(2) + '/',
+                                                      img_name)
+
+            # if the results directory for today does not exist, create it
+            today_result_dir = self.RESULTS_PATH + self.LABEL_TYPES_PATH + \
+                               str(current_day.month).zfill(2) + str(current_day.day).zfill(2)
+            if not os.path.exists(today_result_dir):
+                os.mkdir(today_result_dir)
+
+            # read the randomly chosen image and its ground-truth
+            img = imread(self.DST_PARENT_DIR + self.ORIGINAL_RESIZED_PATH + train_ids[i])[:, :, :IMG_CHANNELS]
+            original_image_as_np_array[0] = img
+
+            mask = imread(self.DST_PARENT_DIR + self.SEGMENTED_ONE_HOT_PATH + train_ids[i].split('.')[0] + '.tif')[:, :,
+                   :N_OF_LABELS]
+
+            # parse the one-hot representation to rgb
+            print('Please wait, decoding ground-truth image.. ')
+            ground_truth = self.parse_prediction(mask, labels)
+
+            # predict the random image
+            prediction_arr = model.predict(original_image_as_np_array)
+
+            # save and display sample
+            imshow(img)
+            rgb_original = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            cv2.imwrite(original_img_path, rgb_original)
+            # plt.savefig(trainPath)
+            plt.show()
+
+            imshow(np.squeeze(ground_truth))
+            rgb_ground_truth = cv2.cvtColor(ground_truth, cv2.COLOR_BGR2RGB)
+            cv2.imwrite(ground_truth_path, rgb_ground_truth)
+            # plt.savefig(controlPath)
+            plt.show()
+
+            print('Please wait, decoding the predicted image.. ')
+            interpreted_prediction = self.parse_prediction(prediction_arr[0], labels)
+            imshow(np.squeeze(interpreted_prediction))
+            rgb_interpreted_prediction = cv2.cvtColor(interpreted_prediction, cv2.COLOR_BGR2RGB)
+            cv2.imwrite(prediction_path, rgb_interpreted_prediction)
+            # plt.savefig(predictionPath)
             plt.show()
 
             print("Enter 0 to exit, any positive number to predict another image: ")
