@@ -9,7 +9,8 @@ import Unet
 
 # IMG_WIDTH = 1000
 # IMG_HEIGHT = 1000
-weights_file_name = "./semantic_segmentation_all_labels_crossentropy_7mil_090_val_Acc.h5"
+weights_file_name = "./semantic_segmentation_all_labels_crossentropy_7mill_deep.h5"
+# weights_file_name = "./semantic_segmentation_all_labels_dice250_08acc.h5"
 
 IMG_WIDTH = 1000
 IMG_HEIGHT = 1000
@@ -90,9 +91,10 @@ unet = Unet.Unet()
 
 ##################################################################### create model #######################################################################
 # creates the unet
-# model = unet.create_corssentropy_7mil_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, input_channels=IMG_CHANNELS,
-#                                             output_channels=N_OF_LABELS, learning_rate=LEARNING_RATE)
-
+# model = unet.create_dice_coef_model(learning_rate=LEARNING_RATE, output_channels=N_OF_LABELS)
+#
+# model = unet.create_corssentropy_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, output_channels=N_OF_LABELS,
+#                                        learning_rate=LEARNING_RATE)
 
 model = unet.create_corssentropy_7mil_model(IMG_WIDTH=IMG_WIDTH, IMG_HEIGHT=IMG_HEIGHT, output_channels=N_OF_LABELS,
                                        learning_rate=LEARNING_RATE)
@@ -144,8 +146,7 @@ try:
     # data_set.segment_data(model)
     # data_set.get_data_set_class_balance()
     # exit(1)
-    data_set.manual_model_testing(model)
+    data_set.manual_model_testing(model, validation_split=0.2)
 except ResourceExhaustedError:
     print('\nNot enough resources, decrease batch size or lower gpu usage\n')
     exit(1)
-

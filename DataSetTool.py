@@ -644,7 +644,8 @@ class DataSetTool:
                 initial_conf_matrix = tf.math.confusion_matrix(num_classes=6,
                                                                labels=ground_truth_max_score,
                                                                predictions=predictions_max_score).numpy()
-                normalized_conf_matrix += np.around(normalize(initial_conf_matrix, axis=1, norm='l1'), decimals=2)
+                # normalized_conf_matrix += np.around(normalize(initial_conf_matrix, axis=1, norm='l1'), decimals=2)
+                normalized_conf_matrix += initial_conf_matrix
 
                 report = classification_report(ground_truth_max_score, predictions_max_score, output_dict=True)
 
@@ -673,11 +674,11 @@ class DataSetTool:
         print(normalized_conf_matrix)
 
         # # store it in a file
-        conf_mat_dict = {
-            'confusion_matrix': normalized_conf_matrix
-        }
-        with open(confusion_matrix_file, 'w') as file:
-            json.dump(conf_mat_dict, file, indent=4)
+        # conf_mat_dict = {
+        #     'confusion_matrix': normalized_conf_matrix
+        # }
+        # with open(confusion_matrix_file, 'w') as file:
+        #     json.dump(conf_mat_dict, file, indent=4)
 
     # segments all images
     def segment_data(self, model: keras.Model):
@@ -873,23 +874,23 @@ class DataSetTool:
 
             # save and display sample
             imshow(img)
-            rgb_original = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            cv2.imwrite(original_img_path, rgb_original)
-            # plt.savefig(trainPath)
+            # rgb_original = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # cv2.imwrite(original_img_path, rgb_original)
+            plt.savefig(original_img_path)
             plt.show()
 
             imshow(np.squeeze(ground_truth))
-            rgb_ground_truth = cv2.cvtColor(ground_truth, cv2.COLOR_BGR2RGB)
-            cv2.imwrite(ground_truth_path, rgb_ground_truth)
-            # plt.savefig(controlPath)
+            # rgb_ground_truth = cv2.cvtColor(ground_truth, cv2.COLOR_BGR2RGB)
+            # cv2.imwrite(ground_truth_path, rgb_ground_truth)
+            plt.savefig(ground_truth_path)
             plt.show()
 
             print('Please wait, decoding the predicted image.. ')
             interpreted_prediction = self.parse_prediction(prediction_arr[0], labels)
             imshow(np.squeeze(interpreted_prediction))
-            rgb_interpreted_prediction = cv2.cvtColor(interpreted_prediction, cv2.COLOR_BGR2RGB)
-            cv2.imwrite(prediction_path, rgb_interpreted_prediction)
-            # plt.savefig(predictionPath)
+            # rgb_interpreted_prediction = cv2.cvtColor(interpreted_prediction, cv2.COLOR_BGR2RGB)
+            # cv2.imwrite(prediction_path, rgb_interpreted_prediction)
+            plt.savefig(prediction_path)
             plt.show()
 
             print("Enter 0 to exit, any positive number to predict another image: ")
